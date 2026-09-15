@@ -1,4 +1,5 @@
 import { analogize, buildOriginalScript, buildScenes, summarizeAbout } from "./copywriter";
+import { packCopy, toVoiceover } from "./style";
 import type { NicheId, TranscriptCue, VideoAnalysis, VideoPlatform } from "./types";
 import { stripHtml } from "./utils";
 
@@ -11,6 +12,7 @@ function detectPlatform(url: string): VideoPlatform {
   if (host.includes("tiktok")) return "tiktok";
   if (host.includes("vk.com") || host.includes("vk.ru") || host.includes("vkvideo")) return "vk";
   if (host.includes("instagram") || host.includes("instagr.am")) return "instagram";
+  if (host.includes("t.me") || host.includes("telegram")) return "telegram";
   return "unknown";
 }
 
@@ -53,8 +55,9 @@ async function fetchHtml(url: string) {
       Referer: "https://www.youtube.com/",
     },
     redirect: "follow",
+    cache: "no-store",
   });
-  if (!response.ok) throw new Error(`HTML ${response.status}`);
+  if (!response.ok) return "";
   return response.text();
 }
 
@@ -147,6 +150,26 @@ function parseJson3(payload: string): TranscriptCue[] {
   }
 }
 
+function parseVtt(vtt: string): TranscriptCue[] {
+  if (!/WEBVTT|->/.test(vtt)) return [];
+  const cues: TranscriptCue[] = [];
+  const blocks = vtt.split(/\n\n+/);
+  for (const block of blocks) {
+    const match = block.match(
+      /(\d{2}:)?(\d{2}):(\d{2})[.,](\d{3}).*?-->\s*(\d{2}:)?(\d{2}):(\d{2})[.,](\d{3})[\s\S]*?\n([\s\S]+)/,
+    );
+    if (!match) continue;
+    const start =
+      Number(match[2] || 0) * 3600 +
+      Number(match[3]) * 60 +
+      Number(match[4]) +
+      Number(match[5]) / 1000;
+    const text = stripHtml(match[10] || match[9] || "").replace(/\n/g, " ");
+    if (text) cues.push({ start, duration: 2, text });
+  }
+  return cues;
+}
+
 function parseTimedText(xml: string): TranscriptCue[] {
   const cues: TranscriptCue[] = [];
   const re = /<text[^>]*start="([^"]+)"[^>]*(?:dur="([^"]+)")?[^>]*>([\s\S]*?)<\/text>/gi;
@@ -193,14 +216,24 @@ async function youtubeTranscript(videoId: string): Promise<{
       tracks.find((track) => track.languageCode?.startsWith("en")) ||
       tracks.find((track) => !track.kind) ||
       tracks[0];
-    if (preferred?.baseUrl) {
-      const url = preferred.baseUrl.replace(/\\u0026/g, "&");
-      const body = await fetchHtml(`${url}&fmt=json3`);
-      const jsonCues = parseJson3(body);
-      const cues = jsonCues.length ? jsonCues : parseTimedText(body);
-      if (cues.length) {
-        methods.push(`youtube captions (${preferred.languageCode || "auto"})`);
-        return { cues, method: methods.join(", "), description };
+    if (preferred?.baseUrl || tracks.length) {
+      const ordered = preferred ? [preferred, ...tracks.filter((track) => track !== preferred)] : tracks;
+      for (const track of ordered) {
+        if (!track?.baseUrl) continue;
+        const base = track.baseUrl.replace(/\\u0026/g, "&");
+        for (const extra of ["", "&fmt=json3", "&fmt=srv1", "&fmt=vtt"]) {
+          const body = await fetchHtml(`${base}${extra}`);
+          const cues =
+            parseJson3(body).length
+              ? parseJson3(body)
+              : parseTimedText(body).length
+                ? parseTimedText(body)
+                : parseVtt(body);
+          if (cues.length) {
+            methods.push(`youtube captions (${track.languageCode || "auto"})`);
+            return { cues, method: methods.join(", "), description };
+          }
+        }
       }
       methods.push("caption URL gated");
     } else if (description) {
@@ -337,13 +370,22 @@ export async function analyzeVideo(url: string, niche: NicheId = "news"): Promis
   const confidence = cues.length
     ? Math.min(0.95, 0.45 + cues.length * 0.02)
     : title
-      ? 0.42
-      : 0.15;
+      ? 0.55
+      : 0.2;
+  const finalTitle = title || "Без публичного заголовка";
+  const voiceover = toVoiceover({
+    title: finalTitle,
+    description,
+    transcript: transcriptText,
+  });
+  const rewritten = "";
+  const telegramPost = "";
+  const threadsPost = "";
 
   return {
     url,
     platform,
-    title: title || "Без публичного заголовка",
+    title: finalTitle,
     author: author || "неизвестно",
     thumbnail,
     description,
@@ -356,5 +398,17 @@ export async function analyzeVideo(url: string, niche: NicheId = "news"): Promis
     painPoints: painFromText(transcriptText || description || title),
     method,
     confidence,
+    voiceover,
+    rewritten,
+    telegramPost,
+    threadsPost,
+    telegramWords: 0,
+    threadsWords: 0,
+    packed: packCopy({
+      title: finalTitle,
+      description: description || about,
+      voiceover,
+      rewritten,
+    }),
   };
 }

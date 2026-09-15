@@ -1,20 +1,29 @@
 import { NextResponse } from "next/server";
+import { ingestSignal } from "@/lib/ingest";
 import type { NicheId } from "@/lib/types";
-import { analyzeVideo } from "@/lib/video";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { url?: string; niche?: NicheId };
-    if (!body.url) {
-      return NextResponse.json({ error: "Нужна ссылка" }, { status: 400 });
+    const body = (await request.json()) as {
+      url?: string;
+      text?: string;
+      niche?: NicheId;
+    };
+    if (!body.url?.trim() && !body.text?.trim()) {
+      return NextResponse.json({ error: "Нужна ссылка или текст" }, { status: 400 });
     }
-    const analysis = await analyzeVideo(body.url.trim(), body.niche || "news");
+    const analysis = await ingestSignal({
+      url: body.url,
+      text: body.text,
+      niche: body.niche || "news",
+    });
     return NextResponse.json(analysis);
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Не удалось прочитать ссылку" },
+      { error: error instanceof Error ? error.message : "Не удалось выгрузить сигнал" },
       { status: 400 },
     );
   }

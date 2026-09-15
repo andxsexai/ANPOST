@@ -6,6 +6,7 @@ const NAV = [
   { href: "/niches", label: "Ниши" },
   { href: "/analyze", label: "Анализ" },
   { href: "/studio", label: "Студия" },
+  { href: "/telegram", label: "Telegram" },
   { href: "/osint", label: "OSINT" },
   { href: "/sources", label: "Источники" },
 ];

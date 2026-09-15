@@ -1,21 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NICHES } from "@/lib/niches";
-import { SOURCES } from "@/lib/sources";
 import type { FeedResponse } from "@/lib/types";
 import { relativeTime } from "@/lib/utils";
 
 const REGIONS = ["all", "US", "KR", "JP", "CN", "RU"] as const;
 
 export function FeedBoard({ initial }: { initial: FeedResponse }) {
+  const [feed, setFeed] = useState(initial);
   const [region, setRegion] = useState<(typeof REGIONS)[number]>("all");
   const [niche, setNiche] = useState("all");
   const [query, setQuery] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      const response = await fetch(`/api/feed?day=${new Date().toISOString().slice(0, 10)}`, {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as FeedResponse;
+      setFeed(payload);
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   const articles = useMemo(() => {
-    return initial.articles.filter((article) => {
+    return feed.articles.filter((article) => {
       if (region !== "all" && article.region !== region) return false;
       if (niche !== "all" && article.niche !== niche) return false;
       if (query) {
@@ -24,11 +38,30 @@ export function FeedBoard({ initial }: { initial: FeedResponse }) {
       }
       return true;
     });
-  }, [initial.articles, region, niche, query]);
+  }, [feed.articles, region, niche, query]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void refresh();
+    }, 60 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   return (
     <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_280px]">
       <div>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">
+            Контур дня {feed.day} · {new Date(feed.generatedAt).toLocaleTimeString("ru-RU")}
+          </p>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="rounded-full border border-fuchsia-400/40 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia-200"
+          >
+            {refreshing ? "Обновляю…" : "Обновить ленту"}
+          </button>
+        </div>
         <div className="flex flex-wrap gap-2">
           {REGIONS.map((item) => (
             <button
@@ -102,6 +135,11 @@ export function FeedBoard({ initial }: { initial: FeedResponse }) {
                   {NICHES.find((item) => item.id === article.niche)?.title}
                 </Link>
                 <Link
+                  href={`/analyze?url=${encodeURIComponent(article.url)}&title=${encodeURIComponent(article.title)}&summary=${encodeURIComponent(article.summary)}&niche=${article.niche}`}
+                >
+                  забрать текст →
+                </Link>
+                <Link
                   href={`/studio?title=${encodeURIComponent(article.title)}&summary=${encodeURIComponent(article.summary)}&url=${encodeURIComponent(article.url)}&source=${encodeURIComponent(article.sourceName)}&niche=${article.niche}`}
                 >
                   в студию →
@@ -118,7 +156,7 @@ export function FeedBoard({ initial }: { initial: FeedResponse }) {
         <section className="border border-white/10 p-5">
           <p className="font-mono text-[10px] tracking-[0.22em] text-fuchsia-300">SOURCES</p>
           <ul className="mt-4 space-y-3 text-sm">
-            {initial.sources.map((source) => (
+          {feed.sources.map((source) => (
               <li key={source.id} className="flex items-center justify-between gap-3">
                 <span className="text-white/70">{source.name}</span>
                 <span className={source.ok ? "text-emerald-300" : "text-rose-300"}>
@@ -131,7 +169,7 @@ export function FeedBoard({ initial }: { initial: FeedResponse }) {
         <section className="border border-white/10 p-5">
           <p className="font-mono text-[10px] tracking-[0.22em] text-fuchsia-300">CLUSTERS</p>
           <ul className="mt-4 space-y-4">
-            {initial.clusters.map((cluster) => (
+            {feed.clusters.map((cluster) => (
               <li key={cluster.id}>
                 <p className="text-sm leading-5 text-white">{cluster.title}</p>
                 <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
@@ -142,7 +180,7 @@ export function FeedBoard({ initial }: { initial: FeedResponse }) {
           </ul>
         </section>
         <section className="border border-white/10 p-5 text-xs leading-5 text-white/45">
-          {SOURCES.length} открытых RSS. Никакого обхода авторизации — только публичный контур.
+          {feed.sources.length} открытых лент. Никакого обхода авторизации — только публичный контур.
         </section>
       </aside>
     </div>

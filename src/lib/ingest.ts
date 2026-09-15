@@ -1,0 +1,282 @@
+import { analogize, buildOriginalScript, buildScenes, summarizeAbout } from "./copywriter";
+import { packCopy, toVoiceover } from "./style";
+import { extractArticle } from "./article";
+import { fetchPublicTelegram, isTelegramUrl } from "./telegram";
+import { fetchInstagramPost, isInstagramUrl } from "./instagram";
+import type { NicheId, VideoAnalysis } from "./types";
+import { analyzeVideo } from "./video";
+import { wordCount } from "./utils";
+import { assertPublicHttpUrl } from "./operator";
+
+function emptyAnalysis(partial: Partial<VideoAnalysis> & { title: string }): VideoAnalysis {
+  const description = partial.description || "";
+  const transcriptText = partial.transcriptText || "";
+  const about = summarizeAbout(partial.title, description, transcriptText);
+  const voiceover = toVoiceover({
+    title: partial.title,
+    description,
+    transcript: transcriptText,
+  });
+  const scenes = buildScenes(partial.transcript || []);
+  return {
+    url: partial.url || "",
+    platform: partial.platform || "text",
+    title: partial.title,
+    author: partial.author || "ANPOST",
+    thumbnail: partial.thumbnail || null,
+    description,
+    about,
+    transcript: partial.transcript || [],
+    transcriptText,
+    scenes,
+    originalScript: buildOriginalScript(partial.title, about, voiceover, scenes),
+    analogous: analogize({
+      title: partial.title,
+      about,
+      transcript: voiceover,
+      niche: (partial.analogous?.niche as NicheId) || "news",
+      scenes,
+    }),
+    painPoints: partial.painPoints || [],
+    method: partial.method || ["pasted text"],
+    confidence: partial.confidence ?? 0.7,
+    voiceover,
+    rewritten: "",
+    telegramPost: "",
+    threadsPost: "",
+    telegramWords: 0,
+    threadsWords: 0,
+    packed: packCopy({
+      title: partial.title,
+      description: description || about,
+      voiceover,
+      rewritten: "",
+    }),
+  };
+}
+
+function withExtra(result: VideoAnalysis, extra: string): VideoAnalysis {
+  if (!extra.trim()) return result;
+  if (result.transcriptText.includes(extra.trim())) return result;
+  const transcriptText = [result.transcriptText, extra.trim()].filter(Boolean).join("\n\n");
+  const voiceover = toVoiceover({
+    title: result.title,
+    description: result.description,
+    transcript: transcriptText,
+  });
+  return {
+    ...result,
+    transcriptText,
+    voiceover,
+    packed: packCopy({
+      title: result.title,
+      description: result.description || result.about,
+      voiceover,
+      rewritten: "",
+    }),
+  };
+}
+
+export async function ingestSignal(input: {
+  url?: string;
+  text?: string;
+  niche?: NicheId;
+}): Promise<VideoAnalysis> {
+  const niche = input.niche || "news";
+  const url = (input.url || "").trim();
+  const text = (input.text || "").trim();
+  if (url) assertPublicHttpUrl(url);
+
+  if (url && isInstagramUrl(url)) {
+    try {
+      const post = await fetchInstagramPost(url);
+      return withExtra(
+        emptyAnalysis({
+          url,
+          platform: "instagram",
+          title: post.title,
+          author: post.author,
+          description: post.caption,
+          transcriptText: post.caption,
+          thumbnail: post.thumbnail,
+          method: ["instagram embed caption"],
+          analogous: {
+            niche,
+            hook: "",
+            scenes: [],
+            voiceover: "",
+            captions: { instagram: "", threads: "", tiktok: "", vk: "" },
+          },
+        }),
+        text,
+      );
+    } catch (error) {
+      return emptyAnalysis({
+        url,
+        platform: "instagram",
+        title: "Пост Instagram",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Подпись не снялась. Вставь текст поста в поле ниже.",
+        method: ["instagram fallback"],
+        analogous: {
+          niche,
+          hook: "",
+          scenes: [],
+          voiceover: "",
+          captions: { instagram: "", threads: "", tiktok: "", vk: "" },
+        },
+      });
+    }
+  }
+
+  if (url && isTelegramUrl(url)) {
+    try {
+      const post = await fetchPublicTelegram(url);
+      return withExtra(
+        emptyAnalysis({
+        url,
+        platform: "telegram",
+        title: post.title,
+        author: post.author,
+        description: post.description,
+        transcriptText: post.text,
+        thumbnail: post.thumbnail,
+        method: ["telegram public embed"],
+        analogous: {
+          niche,
+          hook: "",
+          scenes: [],
+          voiceover: "",
+          captions: { instagram: "", threads: "", tiktok: "", vk: "" },
+        },
+      }),
+        text,
+      );
+    } catch {
+      return emptyAnalysis({
+        url,
+        platform: "telegram",
+        title: "Пост Telegram",
+        description: "Публичный embed закрыт. Вставь текст поста в поле ниже — выгрузим сценарий из него.",
+        method: ["telegram fallback"],
+        analogous: {
+          niche,
+          hook: "",
+          scenes: [],
+          voiceover: "",
+          captions: { instagram: "", threads: "", tiktok: "", vk: "" },
+        },
+      });
+    }
+  }
+
+  if (url) {
+    try {
+      const analysis = await analyzeVideo(url, niche);
+      const voiceover = toVoiceover({
+        title: analysis.title,
+        description: analysis.description,
+        transcript: analysis.transcriptText,
+      });
+      let transcriptText = analysis.transcriptText;
+      if (wordCount(transcriptText || analysis.description) < 80 && analysis.platform === "unknown") {
+        try {
+          const article = await extractArticle(url);
+          transcriptText = article.body;
+          return withExtra(
+            emptyAnalysis({
+            ...analysis,
+            title: analysis.title || article.title,
+            description: analysis.description || article.description,
+            thumbnail: analysis.thumbnail || article.thumbnail,
+            transcriptText,
+            method: [...analysis.method, "article body"],
+            analogous: {
+              niche,
+              hook: "",
+              scenes: [],
+              voiceover: "",
+              captions: { instagram: "", threads: "", tiktok: "", vk: "" },
+            },
+          }),
+            text,
+          );
+        } catch {
+          // keep video/oembed result
+        }
+      }
+      return withExtra(
+        {
+        ...analysis,
+        voiceover: toVoiceover({
+          title: analysis.title,
+          description: analysis.description,
+          transcript: transcriptText || voiceover,
+        }),
+        transcriptText: transcriptText || analysis.transcriptText,
+        rewritten: "",
+        telegramPost: "",
+        threadsPost: "",
+        telegramWords: 0,
+        threadsWords: 0,
+        packed: packCopy({
+          title: analysis.title,
+          description: analysis.description || analysis.about,
+          voiceover: transcriptText || voiceover,
+          rewritten: "",
+        }),
+      },
+        text,
+      );
+    } catch (error) {
+      try {
+        const article = await extractArticle(url);
+        return emptyAnalysis({
+          url,
+          title: article.title,
+          description: article.description,
+          transcriptText: article.body,
+          thumbnail: article.thumbnail,
+          method: ["article extract"],
+          analogous: {
+            niche,
+            hook: "",
+            scenes: [],
+            voiceover: "",
+            captions: { instagram: "", threads: "", tiktok: "", vk: "" },
+          },
+        });
+      } catch {
+        return emptyAnalysis({
+          url,
+          title: url,
+          description: error instanceof Error ? error.message : "не удалось снять метаданные",
+          method: ["fallback after fetch error"],
+          analogous: {
+            niche,
+            hook: "",
+            scenes: [],
+            voiceover: "",
+            captions: { instagram: "", threads: "", tiktok: "", vk: "" },
+          },
+        });
+      }
+    }
+  }
+
+  if (text) {
+    const title = text.split("\n").map((line) => line.trim()).find(Boolean) || "Пост";
+    return emptyAnalysis({
+      platform: "text",
+      title,
+      description: text,
+      transcriptText: text,
+      method: ["raw text"],
+      analogous: { niche, hook: "", scenes: [], voiceover: "", captions: { instagram: "", threads: "", tiktok: "", vk: "" } },
+    });
+  }
+
+  throw new Error("Нужна ссылка или текст");
+}

@@ -39,6 +39,16 @@ export function formatTime(seconds: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+export function wordCount(text: string) {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+export function limitWords(text: string, max: number) {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= max) return text.trim();
+  return `${words.slice(0, max).join(" ")}…`;
+}
+
 export function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }

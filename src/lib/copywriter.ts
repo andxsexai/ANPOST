@@ -100,14 +100,8 @@ export function buildOriginalScript(
   return { hook, body, cta };
 }
 
-function rewriteLine(line: string, niche: NicheId) {
-  const voice = nicheLexicon(niche);
-  const clean = line
-    .replace(/\bI\b/g, "ты")
-    .replace(/\bwe\b/gi, "мы")
-    .replace(/subscribe|подпис/gi, "останься рядом")
-    .replace(/link in bio|ссылк/gi, "карта в профиле");
-  return `${clean} — для ${voice.you}.`;
+function rewriteLine(line: string) {
+  return line.replace(/\bI\b/g, "ты").replace(/\bwe\b/gi, "мы").trim();
 }
 
 export function analogize(input: {
@@ -122,24 +116,15 @@ export function analogize(input: {
   const sourceLines = input.scenes.length
     ? input.scenes.map((scene) => scene.voice)
     : sentences(input.transcript || input.about || input.title);
-  const hook = `Стоп. ${firstHook(input.transcript || input.about || input.title)} А если это про ${NICHE_BY_ID[niche].title.toLowerCase()}?`;
+  const hook = firstHook(input.transcript || input.about || input.title);
   const scenes = sourceLines.slice(0, 6).map((line, index) => {
-    if (index === 0) return `Кадр 1. Хук: ${hook}`;
-    return `Кадр ${index + 1}. ${rewriteLine(line, niche).slice(0, 180)}`;
+    return `Кадр ${index + 1}. ${rewriteLine(line).slice(0, 220)}`;
   });
-  const voiceover = [
-    hook,
-    `Ты — ${voice.you}.`,
-    ...sourceLines.slice(1, 4).map((line) => rewriteLine(line, niche)),
-    `Приз: ${voice.prize}.`,
-    voice.cta,
-  ].join("\n");
-
-  const tags = NICHES.find((item) => item.id === niche)?.title ?? "новости";
-  const ig = `${hook}\n\n${sourceLines.slice(0, 2).join("\n")}\n\n${voice.cta}\n\n#ANPOST #${tags.replace(/\s/g, "")} #OSINT`;
-  const threads = `${hook}\n\n${voice.prize}\n\n${voice.cta}`;
-  const tiktok = `${hook}\n\n${voice.cta} #fyp #${tags}`;
-  const vk = `${hook}\n\nРазбор паттерна ролика и оригинальный сценарий под нишу «${tags}».\n\n${voice.cta}`;
+  const voiceover = sourceLines.slice(0, 8).map(rewriteLine).join("\n");
+  const ig = `${hook}\n\n${sourceLines.slice(0, 4).join("\n")}\n\n${voice.cta}`;
+  const threads = `${hook}\n\n${sourceLines.slice(0, 2).join("\n")}`;
+  const tiktok = `${hook}\n\n${sourceLines[1] || sourceLines[0] || ""}`;
+  const vk = `${hook}\n\n${sourceLines.slice(0, 3).join("\n")}\n\nИсточник сохранён.`;
 
   return {
     niche,

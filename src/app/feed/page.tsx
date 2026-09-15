@@ -13,7 +13,7 @@ export default async function FeedPage() {
     <PageShell
       eyebrow={`CONTOUR · ${live}/10 LIVE · ${feed.articles.length} SIGNALS`}
       title="Лента открытых источников."
-      kicker="Парсинг публичных RSS. Никакого логина, никакого обхода стен. Если источник молчит — это тоже данные."
+      kicker={`Контур дня ${feed.day}. Лента живая: источники перечитываются сегодня и по кнопке «обновить».`}
     >
       <FeedBoard initial={feed} />
     </PageShell>

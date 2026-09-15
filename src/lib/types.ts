@@ -8,17 +8,7 @@ export type NicheId =
   | "health"
   | "spirit";
 
-export type SourceId =
-  | "npr"
-  | "cnn"
-  | "techcrunch"
-  | "yonhap"
-  | "nhk"
-  | "cgtn"
-  | "tass"
-  | "ria"
-  | "interfax"
-  | "lenta";
+export type SourceId = string;
 
 export type Source = {
   id: SourceId;
@@ -32,6 +22,9 @@ export type Source = {
   affiliation: "independent" | "public" | "state" | "agency";
   biasNote: string;
   niches: NicheId[];
+  listKind?: "rss" | "sitemap" | "html";
+  keepPath?: string;
+  hrefPattern?: string;
 };
 
 export type Article = {
@@ -50,6 +43,7 @@ export type Article = {
 
 export type FeedResponse = {
   generatedAt: string;
+  day: string;
   articles: Article[];
   sources: Array<{
     id: SourceId;
@@ -73,7 +67,14 @@ export type StoryCluster = {
   gap: string;
 };
 
-export type VideoPlatform = "youtube" | "tiktok" | "vk" | "instagram" | "unknown";
+export type VideoPlatform =
+  | "youtube"
+  | "tiktok"
+  | "vk"
+  | "instagram"
+  | "telegram"
+  | "text"
+  | "unknown";
 
 export type TranscriptCue = {
   start: number;
@@ -112,4 +113,11 @@ export type VideoAnalysis = {
   painPoints: string[];
   method: string[];
   confidence: number;
+  voiceover: string;
+  rewritten: string;
+  telegramPost: string;
+  threadsPost: string;
+  telegramWords: number;
+  threadsWords: number;
+  packed: string;
 };

@@ -1,29 +1,56 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { CopyButton } from "@/components/copy-button";
+import { LiquidLoader } from "@/components/liquid-metal";
 import { NICHES } from "@/lib/niches";
 import type { NicheId, VideoAnalysis } from "@/lib/types";
-import { formatTime } from "@/lib/utils";
+import { formatTime, wordCount } from "@/lib/utils";
 
 export function AnalyzeForm() {
+  return (
+    <Suspense fallback={<LiquidLoader label="Открываю контур…" />}>
+      <AnalyzeFormInner />
+    </Suspense>
+  );
+}
+
+function AnalyzeFormInner() {
+  const params = useSearchParams();
   const [url, setUrl] = useState("");
-  const [niche, setNiche] = useState<NicheId>("innovation");
+  const [text, setText] = useState("");
+  const [niche, setNiche] = useState<NicheId>("news");
   const [loading, setLoading] = useState(false);
+  const [rewriting, setRewriting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<VideoAnalysis | null>(null);
 
-  async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  useEffect(() => {
+    const nextUrl = params.get("url") || "";
+    const nextTitle = params.get("title") || "";
+    const nextSummary = params.get("summary") || "";
+    const nextNiche = params.get("niche") as NicheId | null;
+    if (nextUrl) setUrl(nextUrl);
+    if (nextTitle || nextSummary) {
+      setText([nextTitle, nextSummary].filter(Boolean).join("\n\n"));
+    }
+    if (nextNiche) setNiche(nextNiche);
+  }, [params]);
+
+  async function extract(event?: React.FormEvent) {
+    event?.preventDefault();
     setLoading(true);
     setError(null);
+    setData(null);
     try {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, niche }),
+        body: JSON.stringify({ url, text, niche }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Не удалось разобрать ссылку");
+      if (!response.ok) throw new Error(payload.error || "Не удалось забрать текст");
       setData(payload as VideoAnalysis);
     } catch (err) {
       setError(err instanceof Error ? err.message : "ошибка");
@@ -32,18 +59,58 @@ export function AnalyzeForm() {
     }
   }
 
+  async function rework() {
+    if (!data) return;
+    setRewriting(true);
+    try {
+      const response = await fetch("/api/rewrite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: data.title,
+          description: data.description,
+          transcript: data.transcriptText || data.voiceover,
+          text: data.transcriptText || data.voiceover,
+        }),
+      });
+      const payload = await response.json();
+      setData({
+        ...data,
+        rewritten: payload.rewritten,
+        telegramPost: payload.telegramPost,
+        threadsPost: payload.threadsPost,
+        telegramWords: payload.telegramWords,
+        threadsWords: payload.threadsWords,
+        packed: payload.packed || data.packed,
+      });
+    } finally {
+      setRewriting(false);
+    }
+  }
+
+  const fullText = data ? data.transcriptText || data.voiceover || data.description : "";
+
   return (
     <div>
-      <form onSubmit={onSubmit} className="border border-white/10 p-6 md:p-8">
+      <form onSubmit={extract} className="border border-white/10 bg-black/30 p-6 backdrop-blur-sm md:p-8">
         <label className="font-mono text-[10px] uppercase tracking-[0.28em] text-fuchsia-300">
-          Публичная ссылка
+          Ссылка с ленты / YouTube / TikTok / VK / Instagram / Telegram / статья
         </label>
         <input
           value={url}
           onChange={(event) => setUrl(event.target.value)}
-          placeholder="YouTube · TikTok · VK · Instagram"
+          placeholder="Вставь ссылку источника"
           className="mt-3 w-full border-b border-white/20 bg-transparent py-4 font-display text-2xl font-light text-white outline-none placeholder:text-white/20"
-          required
+        />
+        <label className="mt-8 block font-mono text-[10px] uppercase tracking-[0.28em] text-fuchsia-300">
+          Дополнительный текст, если есть
+        </label>
+        <textarea
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          rows={4}
+          placeholder="Не обязательно. Если ссылка не отдаст тело — оставь заголовок и лид сюда."
+          className="mt-3 w-full border border-white/10 bg-black/20 p-4 text-sm leading-6 text-white outline-none"
         />
         <div className="mt-6 flex flex-wrap gap-2">
           {NICHES.map((item) => (
@@ -63,116 +130,111 @@ export function AnalyzeForm() {
         </div>
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || (!url.trim() && !text.trim())}
           className="mt-8 rounded-full bg-fuchsia-400 px-6 py-3 font-mono text-[11px] uppercase tracking-[0.22em] text-black shadow-[0_0_30px_rgba(232,121,249,0.45)] disabled:opacity-50"
         >
-          {loading ? "Читаю открытый контур…" : "Выгрузить сценарий"}
+          1. Забрать полный текст
         </button>
         {error ? <p className="mt-4 text-sm text-rose-300">{error}</p> : null}
+        {loading ? <LiquidLoader label="Забираю текст целиком…" /> : null}
       </form>
 
-      {data ? (
-        <div className="mt-12 grid gap-10 lg:grid-cols-2">
-          <section>
-            <p className="font-mono text-[10px] tracking-[0.24em] text-fuchsia-300">SIGNAL</p>
-            <h2 className="mt-3 font-display text-3xl font-light text-white">{data.title}</h2>
-            <p className="mt-2 text-sm text-white/45">
-              {data.platform} · {data.author} · confidence {Math.round(data.confidence * 100)}%
-            </p>
-            {data.thumbnail ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={data.thumbnail}
-                alt=""
-                className="mt-6 aspect-video w-full object-cover opacity-90"
-              />
-            ) : null}
-            <p className="mt-6 text-base leading-7 text-white/70">{data.about}</p>
-            <ul className="mt-6 space-y-2 font-mono text-[11px] text-white/35">
-              {data.method.map((item) => (
-                <li key={item}>▸ {item}</li>
-              ))}
-            </ul>
-          </section>
-          <section className="space-y-8">
-            <div className="border border-white/10 p-5">
+      {data && !loading ? (
+        <div className="mt-12 space-y-6">
+          <div className="flex flex-wrap gap-3">
+            <CopyButton text={data.title} label="Заголовок" />
+            <CopyButton text={data.description || data.about} label="Описание" />
+            <CopyButton text={fullText} label="Полный текст" />
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card title="Заголовок" text={data.title} />
+            <Card title="Описание" text={data.description || data.about} />
+            <Card title={`Полный текст · ${wordCount(fullText)} слов`} text={fullText} tall />
+          </div>
+
+          {data.transcript.length ? (
+            <section>
               <p className="font-mono text-[10px] tracking-[0.24em] text-fuchsia-300">
-                ОРИГИНАЛЬНЫЙ СЦЕНАРИЙ
+                ОЗВУЧКА ПО ТАЙМКОДАМ · {data.transcript.length} кусков
               </p>
-              <p className="mt-4 text-lg text-white">{data.originalScript.hook}</p>
-              <ol className="mt-4 space-y-2 text-sm text-white/55">
-                {data.originalScript.body.map((line, index) => (
-                  <li key={index}>
-                    {index + 1}. {line}
-                  </li>
-                ))}
-              </ol>
-              <p className="mt-4 text-sm text-fuchsia-200">{data.originalScript.cta}</p>
-            </div>
-            <div className="border border-fuchsia-400/30 bg-fuchsia-500/5 p-5">
-              <p className="font-mono text-[10px] tracking-[0.24em] text-fuchsia-300">
-                АНАЛОГ · {data.analogous.niche}
-              </p>
-              <p className="mt-4 text-lg text-white">{data.analogous.hook}</p>
-              <pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-6 text-white/70">
-                {data.analogous.voiceover}
-              </pre>
-            </div>
-          </section>
-          <section>
-            <p className="font-mono text-[10px] tracking-[0.24em] text-fuchsia-300">
-              РАСШИФРОВКА
-            </p>
-            <div className="mt-4 max-h-[420px] overflow-auto border border-white/10 p-4 text-sm leading-6 text-white/65">
-              {data.transcript.length ? (
-                data.transcript.map((cue, index) => (
+              <div className="mt-4 max-h-[360px] overflow-auto border border-white/10 p-4 text-sm leading-6 text-white/65">
+                {data.transcript.map((cue, index) => (
                   <p key={`${cue.start}-${index}`}>
                     <span className="mr-3 font-mono text-[10px] text-fuchsia-300/70">
                       {formatTime(cue.start)}
                     </span>
                     {cue.text}
                   </p>
-                ))
-              ) : (
-                <p>
-                  Публичных субтитров нет. Текст собран из открытых метаданных — так честнее, чем
-                  притворяться, что мы взломали плеер.
-                </p>
-              )}
-            </div>
-          </section>
-          <section className="space-y-4">
-            <p className="font-mono text-[10px] tracking-[0.24em] text-fuchsia-300">
-              ПОСАДКА НА ПЛАТФОРМЫ
-            </p>
-            {Object.entries(data.analogous.captions).map(([platform, text]) => (
-              <article key={platform} className="border border-white/10 p-4">
-                <div className="flex items-center justify-between">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/40">
-                    {platform}
-                  </p>
-                  <button
-                    type="button"
-                    className="text-[10px] uppercase tracking-[0.16em] text-fuchsia-300"
-                    onClick={() => navigator.clipboard.writeText(text)}
-                  >
-                    copy
-                  </button>
-                </div>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-white/70">{text}</p>
-              </article>
-            ))}
-            <div>
-              <p className="font-mono text-[10px] tracking-[0.24em] text-rose-300">PAIN POINTS</p>
-              <ul className="mt-3 space-y-2 text-sm text-white/55">
-                {data.painPoints.map((item) => (
-                  <li key={item}>— {item}</li>
                 ))}
-              </ul>
+              </div>
+            </section>
+          ) : null}
+
+          <section className="border border-fuchsia-400/30 bg-fuchsia-500/5 p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="font-mono text-[10px] tracking-[0.24em] text-fuchsia-300">
+                2. КОМАНДА НА ПЕРЕРАБОТКУ
+              </p>
+              <button
+                type="button"
+                onClick={rework}
+                disabled={rewriting || !fullText}
+                className="rounded-full bg-white px-5 py-3 font-mono text-[11px] uppercase tracking-[0.18em] text-black disabled:opacity-50"
+              >
+                {rewriting ? "Собираю посты…" : "Переработать → Telegram 1500 / Threads 500"}
+              </button>
             </div>
+            <p className="mt-3 text-sm text-white/45">
+              Сначала забрали текст. Переработка не стартует сама — и не подменяет смысл чужой рамкой.
+            </p>
+            {rewriting ? <LiquidLoader label="Белая и фиолетовая капли пишут лёгкий смысл…" /> : null}
           </section>
+
+          {data.telegramPost ? (
+            <div className="grid gap-6 lg:grid-cols-2">
+              <article className="border border-white/10 bg-black/35 p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-fuchsia-300">
+                    Telegram · {data.telegramWords}/1500 слов
+                  </p>
+                  <CopyButton text={data.telegramPost} />
+                </div>
+                <pre className="mt-4 max-h-[520px] overflow-auto whitespace-pre-wrap font-sans text-sm leading-7 text-white/80">
+                  {data.telegramPost}
+                </pre>
+              </article>
+              <article className="border border-white/10 bg-black/35 p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-fuchsia-300">
+                    Threads · {data.threadsWords}/500 слов
+                  </p>
+                  <CopyButton text={data.threadsPost} />
+                </div>
+                <pre className="mt-4 max-h-[520px] overflow-auto whitespace-pre-wrap font-sans text-sm leading-7 text-white/80">
+                  {data.threadsPost}
+                </pre>
+              </article>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
+  );
+}
+
+function Card({ title, text, tall }: { title: string; text: string; tall?: boolean }) {
+  return (
+    <article className="border border-white/10 bg-black/35 p-5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-fuchsia-300">{title}</p>
+        <CopyButton text={text} />
+      </div>
+      <p
+        className={`mt-4 whitespace-pre-wrap text-sm leading-6 text-white/75 ${tall ? "max-h-[420px] overflow-auto" : ""}`}
+      >
+        {text || "—"}
+      </p>
+    </article>
   );
 }

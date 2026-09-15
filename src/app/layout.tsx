@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Manrope, Unbounded } from "next/font/google";
+import { LiquidMetalBackdrop } from "@/components/liquid-metal";
 import "./globals.css";
 
 const display = Unbounded({
@@ -30,7 +31,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="ru"
       className={`${display.variable} ${sans.variable} ${mono.variable} h-full antialiased`}
     >
-      <body className={`${sans.className} relative flex min-h-full flex-col`}>{children}</body>
+      <body className={`${sans.className} relative flex min-h-full flex-col`}>
+        <LiquidMetalBackdrop />
+        {children}
+      </body>
     </html>
   );
 }

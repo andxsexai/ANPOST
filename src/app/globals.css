@@ -23,6 +23,101 @@
   }
 }
 
+@keyframes metal-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(40px, 28px, 0) scale(1.04);
+  }
+}
+
+@keyframes metal-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-50px, -20px, 0);
+  }
+}
+
+@keyframes metal-c {
+  0%,
+  100% {
+    transform: translate3d(0, 18px, 0);
+  }
+  50% {
+    transform: translate3d(30px, -24px, 0);
+  }
+}
+
+@keyframes drop-float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(18px, 22px) scale(1.12);
+  }
+}
+
+@keyframes liquid-white {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(22px);
+  }
+}
+
+@keyframes liquid-violet {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-22px);
+  }
+}
+
+.metal-flow-a {
+  animation: metal-a 14s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.metal-flow-b {
+  animation: metal-b 18s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.metal-flow-c {
+  animation: metal-c 16s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.metal-drop {
+  animation: drop-float 9s ease-in-out infinite;
+}
+
+.metal-drop-2 {
+  animation: drop-float 11s ease-in-out infinite reverse;
+}
+
+.liquid-drop-white {
+  animation: liquid-white 1.15s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.liquid-drop-violet {
+  animation: liquid-violet 1.15s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
 html {
   background: var(--background);
 }
@@ -31,11 +126,7 @@ body {
   min-height: 100%;
   color: var(--foreground);
   font-family: var(--font-sans);
-  background:
-    radial-gradient(1200px 600px at 80% -10%, rgba(168, 85, 247, 0.22), transparent 55%),
-    radial-gradient(900px 500px at -10% 20%, rgba(34, 211, 238, 0.08), transparent 50%),
-    radial-gradient(700px 400px at 50% 120%, rgba(232, 121, 249, 0.12), transparent 45%),
-    var(--background);
+  background: #050208;
 }
 
 body::before {

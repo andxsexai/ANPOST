@@ -1,3 +1,4 @@
+import { RELATION_FORUMS } from "./forums";
 import type { Source } from "./types";
 
 export const SOURCES: Source[] = [
@@ -133,6 +134,8 @@ export const SOURCES: Source[] = [
   },
 ];
 
+export const ALL_SOURCES: Source[] = [...SOURCES, ...RELATION_FORUMS];
+
 export const SOURCE_BY_ID = Object.fromEntries(
-  SOURCES.map((source) => [source.id, source]),
+  ALL_SOURCES.map((source) => [source.id, source]),
 ) as Record<Source["id"], Source>;
