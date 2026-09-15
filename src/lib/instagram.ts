@@ -2,7 +2,9 @@ import { decodeEntities } from "./utils";
 
 const SHARE_UA = [
   "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+  "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
   "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+  "Twitterbot/1.0",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
 ];
 
@@ -61,33 +63,46 @@ function captionFromBody(html: string) {
   return peelShareCard(text);
 }
 
+function isBlockedCaption(text: string) {
+  return /зарегистрируйтесь|sign up to see|log in to instagram|создайте аккаунт|чтобы быть в курсе|see photos and videos/i.test(
+    text,
+  );
+}
+
 export async function fetchInstagramPost(url: string) {
   const code = url.match(/instagram\.com\/(?:p|reel|reels|tv)\/([^/?#]+)/i)?.[1];
   if (!code) throw new Error("Нужна ссылка вида instagram.com/p/…");
-  const postUrl = `https://www.instagram.com/p/${encodeURIComponent(code)}/`;
+  const candidates = [
+    `https://www.instagram.com/reel/${encodeURIComponent(code)}/`,
+    `https://www.instagram.com/p/${encodeURIComponent(code)}/`,
+    `https://www.instagram.com/reels/${encodeURIComponent(code)}/`,
+  ];
 
-  let html = "";
   let lastError = "Instagram не отдал карточку";
-  for (const ua of SHARE_UA) {
-    try {
-      const response = await fetch(postUrl, {
-        headers: {
-          "User-Agent": ua,
-          Accept: "text/html,application/xhtml+xml",
-          "Accept-Language": "ru,en;q=0.8",
-        },
-        cache: "no-store",
-        redirect: "follow",
-      });
-      if (!response.ok) {
-        lastError = `Instagram ${response.status}`;
-        continue;
-      }
-      html = await response.text();
-      const caption =
-        captionFromBody(html) ||
-        peelShareCard(meta(html, ["og:description", "description"]));
-      if (caption.length > 40) {
+  for (const postUrl of candidates) {
+    for (const ua of SHARE_UA) {
+      try {
+        const response = await fetch(postUrl, {
+          headers: {
+            "User-Agent": ua,
+            Accept: "text/html,application/xhtml+xml",
+            "Accept-Language": "ru,en;q=0.8",
+          },
+          cache: "no-store",
+          redirect: "follow",
+        });
+        if (!response.ok) {
+          lastError = `Instagram ${response.status}`;
+          continue;
+        }
+        const html = await response.text();
+        const caption = peelShareCard(
+          captionFromBody(html) || meta(html, ["og:description", "description", "twitter:description"]),
+        );
+        if (caption.length < 40 || isBlockedCaption(caption)) {
+          lastError = "Instagram показал экран входа вместо подписи";
+          continue;
+        }
         const author =
           html.match(/instagram\.com\/([A-Za-z0-9._]+)\/reel\//i)?.[1] ||
           html.match(/\(@([A-Za-z0-9._]+)\)/)?.[1] ||
@@ -103,9 +118,9 @@ export async function fetchInstagramPost(url: string) {
           html.match(/content="(https:\/\/scontent[^"]+)"/i)?.[1] ||
           null;
         return { author, title, caption, thumbnail };
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : lastError;
       }
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : lastError;
     }
   }
 

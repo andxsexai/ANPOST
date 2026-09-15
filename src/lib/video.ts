@@ -40,7 +40,7 @@ function youtubeId(url: string) {
 async function fetchJson(url: string) {
   const response = await fetch(url, {
     headers: { "User-Agent": UA, Accept: "application/json" },
-    next: { revalidate: 0 },
+    cache: "no-store",
   });
   if (!response.ok) throw new Error(`oEmbed ${response.status}`);
   return response.json() as Promise<Record<string, string>>;
@@ -150,6 +150,31 @@ function parseJson3(payload: string): TranscriptCue[] {
   }
 }
 
+function parseCaptionXml(xml: string): TranscriptCue[] {
+  const cues: TranscriptCue[] = [];
+  const modern = /<p\b[^>]*\bt="(\d+)"[^>]*(?:\bd="(\d+)")?[^>]*>([\s\S]*?)<\/p>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = modern.exec(xml))) {
+    const text = stripHtml(match[3]).replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    cues.push({
+      start: Number(match[1]) / 1000,
+      duration: Number(match[2] || 2000) / 1000,
+      text,
+    });
+  }
+  if (cues.length) return cues;
+  return parseTimedText(xml);
+}
+
+function parseCaptionBody(body: string): TranscriptCue[] {
+  const json3 = parseJson3(body);
+  if (json3.length) return json3;
+  const xml = parseCaptionXml(body);
+  if (xml.length) return xml;
+  return parseVtt(body);
+}
+
 function parseVtt(vtt: string): TranscriptCue[] {
   if (!/WEBVTT|->/.test(vtt)) return [];
   const cues: TranscriptCue[] = [];
@@ -186,19 +211,119 @@ function parseTimedText(xml: string): TranscriptCue[] {
   return cues;
 }
 
+type CaptionTrack = { baseUrl?: string; languageCode?: string; kind?: string };
+
+async function innertubePlayer(videoId: string) {
+  const clients = [
+    {
+      clientName: "ANDROID",
+      clientVersion: "20.10.38",
+      ua: "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip",
+    },
+    {
+      clientName: "WEB",
+      clientVersion: "2.20250313.01.00",
+      ua: UA,
+    },
+  ];
+  for (const client of clients) {
+    try {
+      const response = await fetch("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": client.ua,
+          "Accept-Language": "ru,en;q=0.8",
+        },
+        body: JSON.stringify({
+          context: {
+            client: {
+              clientName: client.clientName,
+              clientVersion: client.clientVersion,
+              hl: "ru",
+              gl: "RU",
+            },
+          },
+          videoId,
+        }),
+        cache: "no-store",
+      });
+      if (!response.ok) continue;
+      return (await response.json()) as {
+        videoDetails?: { title?: string; shortDescription?: string; author?: string };
+        captions?: {
+          playerCaptionsTracklistRenderer?: { captionTracks?: CaptionTrack[] };
+        };
+      };
+    } catch {
+      // try next client
+    }
+  }
+  return null;
+}
+
+function rankTracks(tracks: CaptionTrack[]) {
+  const score = (track: CaptionTrack) => {
+    const lang = (track.languageCode || "").toLowerCase();
+    let value = 0;
+    if (lang.startsWith("ru")) value += 8;
+    else if (lang.startsWith("en")) value += 4;
+    if (!track.kind) value += 2;
+    if (track.kind === "asr") value += 1;
+    return value;
+  };
+  return [...tracks].filter((track) => track.baseUrl).sort((a, b) => score(b) - score(a));
+}
+
+async function loadCaptionTracks(tracks: CaptionTrack[]) {
+  for (const track of rankTracks(tracks)) {
+    const base = track.baseUrl!.replace(/\\u0026/g, "&");
+    for (const extra of ["", "&fmt=json3", "&fmt=srv3", "&fmt=vtt"]) {
+      const body = await fetchHtml(`${base}${extra}`);
+      const cues = parseCaptionBody(body);
+      if (cues.length) {
+        return {
+          cues,
+          method: `youtube captions (${track.languageCode || "auto"}${track.kind ? ` ${track.kind}` : ""})`,
+        };
+      }
+    }
+  }
+  return null;
+}
+
 async function youtubeTranscript(videoId: string): Promise<{
   cues: TranscriptCue[];
   method: string;
   description: string;
+  title?: string;
+  author?: string;
 }> {
   const methods: string[] = [];
   let description = "";
+  let title = "";
+  let author = "";
+
+  const player = await innertubePlayer(videoId);
+  if (player?.videoDetails?.shortDescription) description = player.videoDetails.shortDescription;
+  if (player?.videoDetails?.title) title = player.videoDetails.title;
+  if (player?.videoDetails?.author) author = player.videoDetails.author;
+  const innertubeTracks = player?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+  if (innertubeTracks.length) {
+    const loaded = await loadCaptionTracks(innertubeTracks);
+    if (loaded) return { ...loaded, description, title, author };
+    methods.push("innertube tracks empty");
+  } else {
+    methods.push("innertube without captionTracks");
+  }
+
   try {
     const html = await fetchHtml(`https://www.youtube.com/watch?v=${videoId}`);
-    const player = parsePlayer(html);
-    description = player?.videoDetails?.shortDescription || "";
-    let tracks =
-      player?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+    const watchPlayer = parsePlayer(html);
+    description = description || watchPlayer?.videoDetails?.shortDescription || "";
+    title = title || watchPlayer?.videoDetails?.title || "";
+    author = author || watchPlayer?.videoDetails?.author || "";
+    let tracks = watchPlayer?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
     if (!tracks.length) {
       const capAt = html.indexOf('"captionTracks":');
       const bracketAt = capAt >= 0 ? html.indexOf("[", capAt) : -1;
@@ -211,64 +336,40 @@ async function youtubeTranscript(videoId: string): Promise<{
         }
       }
     }
-    const preferred =
-      tracks.find((track) => track.languageCode?.startsWith("ru")) ||
-      tracks.find((track) => track.languageCode?.startsWith("en")) ||
-      tracks.find((track) => !track.kind) ||
-      tracks[0];
-    if (preferred?.baseUrl || tracks.length) {
-      const ordered = preferred ? [preferred, ...tracks.filter((track) => track !== preferred)] : tracks;
-      for (const track of ordered) {
-        if (!track?.baseUrl) continue;
-        const base = track.baseUrl.replace(/\\u0026/g, "&");
-        for (const extra of ["", "&fmt=json3", "&fmt=srv1", "&fmt=vtt"]) {
-          const body = await fetchHtml(`${base}${extra}`);
-          const cues =
-            parseJson3(body).length
-              ? parseJson3(body)
-              : parseTimedText(body).length
-                ? parseTimedText(body)
-                : parseVtt(body);
-          if (cues.length) {
-            methods.push(`youtube captions (${track.languageCode || "auto"})`);
-            return { cues, method: methods.join(", "), description };
-          }
-        }
-      }
-      methods.push("caption URL gated");
-    } else if (description) {
-      methods.push("player description, no captionTracks");
-    } else {
-      methods.push("watch page without captionTracks");
-    }
+    const loaded = await loadCaptionTracks(tracks);
+    if (loaded) return { ...loaded, description, title, author };
+    methods.push(tracks.length ? "watch caption URL gated" : "watch page without captionTracks");
   } catch {
     methods.push("watch page blocked");
   }
 
   try {
-    const list = await fetchHtml(
-      `https://www.youtube.com/api/timedtext?type=list&v=${videoId}`,
-    );
-    const lang =
-      list.match(/lang_code="(ru[^"]*)"/)?.[1] ||
-      list.match(/lang_code="(en[^"]*)"/)?.[1] ||
-      list.match(/lang_code="([^"]+)"/)?.[1];
-    if (lang) {
-      const xml = await fetchHtml(
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}&fmt=json3`,
-      );
-      const jsonCues = parseJson3(xml);
-      const cues = jsonCues.length ? jsonCues : parseTimedText(xml);
-      if (cues.length) {
-        methods.push(`timedtext ${lang}`);
-        return { cues, method: methods.join(", "), description };
+    const list = await fetchHtml(`https://www.youtube.com/api/timedtext?type=list&v=${videoId}`);
+    const langs = [...list.matchAll(/lang_code="([^"]+)"/g)].map((item) => item[1]);
+    const ordered = langs.sort((a, b) => Number(b.startsWith("ru")) - Number(a.startsWith("ru")));
+    for (const lang of ordered.slice(0, 4)) {
+      for (const extra of ["", "&kind=asr", "&fmt=json3", "&kind=asr&fmt=json3"]) {
+        const xml = await fetchHtml(
+          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${encodeURIComponent(lang)}${extra}`,
+        );
+        const cues = parseCaptionBody(xml);
+        if (cues.length) {
+          methods.push(`timedtext ${lang}`);
+          return { cues, method: methods.join(" · "), description, title, author };
+        }
       }
     }
   } catch {
     methods.push("timedtext unavailable");
   }
 
-  return { cues: [], method: methods.join(" · ") || "no public captions", description };
+  return {
+    cues: [],
+    method: methods.join(" · ") || "no public captions",
+    description,
+    title,
+    author,
+  };
 }
 
 async function oembedMeta(platform: VideoPlatform, url: string) {
@@ -287,6 +388,19 @@ async function oembedMeta(platform: VideoPlatform, url: string) {
     );
   }
   throw new Error("no oEmbed");
+}
+
+function jsonString(html: string, keys: string[]) {
+  for (const key of keys) {
+    const match = html.match(new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`));
+    if (!match?.[1]) continue;
+    try {
+      return JSON.parse(`"${match[1]}"`) as string;
+    } catch {
+      return match[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
+    }
+  }
+  return "";
 }
 
 function painFromText(text: string) {
@@ -330,17 +444,21 @@ export async function analyzeVideo(url: string, niche: NicheId = "news"): Promis
     method.push("oEmbed unavailable");
   }
 
-  if (!title) {
-    try {
-      const html = await fetchHtml(url);
-      title = og(html, "og:title") || stripHtml(html.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || "");
-      description = og(html, "og:description") || description;
-      thumbnail = og(html, "og:image") || thumbnail;
-      author = og(html, "og:site_name") || author;
-      method.push("open graph");
-    } catch {
-      method.push("page fetch blocked");
+  let pageHtml = "";
+  try {
+    pageHtml = await fetchHtml(url);
+    if (!title) {
+      title = og(pageHtml, "og:title") || stripHtml(pageHtml.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || "");
     }
+    description =
+      description ||
+      og(pageHtml, "og:description") ||
+      jsonString(pageHtml, ["desc", "description", "caption", "videoDesc"]);
+    thumbnail = thumbnail || og(pageHtml, "og:image");
+    author = author || og(pageHtml, "og:site_name") || jsonString(pageHtml, ["nickname", "authorName", "ownerName"]);
+    method.push("open graph");
+  } catch {
+    method.push("page fetch blocked");
   }
 
   let cues: TranscriptCue[] = [];
@@ -350,13 +468,29 @@ export async function analyzeVideo(url: string, niche: NicheId = "news"): Promis
       const result = await youtubeTranscript(id);
       cues = result.cues;
       if (result.description) description = result.description;
+      if (result.title && (!title || title.length < result.title.length)) title = result.title;
+      if (result.author) author = result.author;
       method.push(result.method);
     }
-  } else {
-    method.push("captions API есть только у YouTube; остальные платформы — публичные метаданные");
+  } else if (platform === "tiktok" || platform === "vk") {
+    const caption =
+      jsonString(pageHtml, ["desc", "description", "caption", "text"]) ||
+      og(pageHtml, "og:description") ||
+      title;
+    if (caption) {
+      description = description || caption;
+      method.push(`${platform} public caption`);
+    }
   }
 
-  const transcriptText = cues.map((cue) => cue.text).join(" ").trim();
+  let transcriptText = cues.map((cue) => cue.text).join(" ").trim();
+  if (!transcriptText) {
+    transcriptText = (description || title).trim();
+    if (transcriptText) {
+      cues = [{ start: 0, duration: 0, text: transcriptText }];
+      method.push("voiceover from public description");
+    }
+  }
   const about = summarizeAbout(title || url, description, transcriptText);
   const scenes = buildScenes(cues);
   const originalScript = buildOriginalScript(title, about, transcriptText, scenes);

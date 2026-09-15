@@ -1,5 +1,5 @@
 import { analogize, buildOriginalScript, buildScenes, summarizeAbout } from "./copywriter";
-import { packCopy, toVoiceover } from "./style";
+import { composePlatforms, packCopy, toVoiceover } from "./style";
 import { extractArticle } from "./article";
 import { fetchPublicTelegram, isTelegramUrl } from "./telegram";
 import { fetchInstagramPost, isInstagramUrl } from "./instagram";
@@ -55,6 +55,41 @@ function emptyAnalysis(partial: Partial<VideoAnalysis> & { title: string }): Vid
   };
 }
 
+function finish(result: VideoAnalysis): VideoAnalysis {
+  const voiceover =
+    result.voiceover ||
+    result.transcriptText ||
+    result.description ||
+    result.title;
+  const transcript = result.transcript.length
+    ? result.transcript
+    : voiceover
+      ? [{ start: 0, duration: 0, text: voiceover }]
+      : [];
+  const transcriptText = result.transcriptText || voiceover;
+  const posts = composePlatforms({
+    title: result.title,
+    description: result.description,
+    transcript: transcriptText,
+    body: transcriptText,
+  });
+  return {
+    ...result,
+    transcript,
+    transcriptText,
+    voiceover,
+    ...posts,
+    packed: packCopy({
+      title: result.title,
+      description: result.description || result.about,
+      voiceover,
+      rewritten: posts.rewritten,
+      telegramPost: posts.telegramPost,
+      threadsPost: posts.threadsPost,
+    }),
+  };
+}
+
 function withExtra(result: VideoAnalysis, extra: string): VideoAnalysis {
   if (!extra.trim()) return result;
   if (result.transcriptText.includes(extra.trim())) return result;
@@ -82,6 +117,14 @@ export async function ingestSignal(input: {
   text?: string;
   niche?: NicheId;
 }): Promise<VideoAnalysis> {
+  return finish(await ingestCore(input));
+}
+
+async function ingestCore(input: {
+  url?: string;
+  text?: string;
+  niche?: NicheId;
+}): Promise<VideoAnalysis> {
   const niche = input.niche || "news";
   const url = (input.url || "").trim();
   const text = (input.text || "").trim();
@@ -98,6 +141,11 @@ export async function ingestSignal(input: {
           author: post.author,
           description: post.caption,
           transcriptText: post.caption,
+          transcript: post.caption
+            .split(/\n+/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line, index) => ({ start: index * 2, duration: 2, text: line })),
           thumbnail: post.thumbnail,
           method: ["instagram embed caption"],
           analogous: {
@@ -181,7 +229,10 @@ export async function ingestSignal(input: {
         transcript: analysis.transcriptText,
       });
       let transcriptText = analysis.transcriptText;
-      if (wordCount(transcriptText || analysis.description) < 80 && analysis.platform === "unknown") {
+      if (
+        wordCount(transcriptText || analysis.description) < 120 &&
+        !["youtube", "tiktok", "instagram", "telegram", "vk"].includes(analysis.platform)
+      ) {
         try {
           const article = await extractArticle(url);
           transcriptText = article.body;

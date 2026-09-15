@@ -133,7 +133,7 @@ function AnalyzeFormInner() {
           disabled={loading || (!url.trim() && !text.trim())}
           className="mt-8 rounded-full bg-fuchsia-400 px-6 py-3 font-mono text-[11px] uppercase tracking-[0.22em] text-black shadow-[0_0_30px_rgba(232,121,249,0.45)] disabled:opacity-50"
         >
-          1. Забрать полный текст
+          1. Забрать текст и переписать
         </button>
         {error ? <p className="mt-4 text-sm text-rose-300">{error}</p> : null}
         {loading ? <LiquidLoader label="Забираю текст целиком…" /> : null}
@@ -150,7 +150,7 @@ function AnalyzeFormInner() {
           <div className="grid gap-6 lg:grid-cols-3">
             <Card title="Заголовок" text={data.title} />
             <Card title="Описание" text={data.description || data.about} />
-            <Card title={`Полный текст · ${wordCount(fullText)} слов`} text={fullText} tall />
+            <Card title={`Озвучка · ${wordCount(fullText)} слов`} text={fullText} tall />
           </div>
 
           {data.transcript.length ? (
@@ -158,6 +158,7 @@ function AnalyzeFormInner() {
               <p className="font-mono text-[10px] tracking-[0.24em] text-fuchsia-300">
                 ОЗВУЧКА ПО ТАЙМКОДАМ · {data.transcript.length} кусков
               </p>
+              <p className="mt-2 font-mono text-[10px] text-white/35">{data.method.join(" · ")}</p>
               <div className="mt-4 max-h-[360px] overflow-auto border border-white/10 p-4 text-sm leading-6 text-white/65">
                 {data.transcript.map((cue, index) => (
                   <p key={`${cue.start}-${index}`}>
@@ -169,7 +170,9 @@ function AnalyzeFormInner() {
                 ))}
               </div>
             </section>
-          ) : null}
+          ) : (
+            <p className="text-sm text-white/40">Озвучка не пришла. Проверь ссылку или вставь текст вручную.</p>
+          )}
 
           <section className="border border-fuchsia-400/30 bg-fuchsia-500/5 p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -186,7 +189,7 @@ function AnalyzeFormInner() {
               </button>
             </div>
             <p className="mt-3 text-sm text-white/45">
-              Сначала забрали текст. Переработка не стартует сама — и не подменяет смысл чужой рамкой.
+              Ссылка отдаёт озвучку и сразу черновик постов. Кнопка ниже пересобирает текст ещё раз.
             </p>
             {rewriting ? <LiquidLoader label="Белая и фиолетовая капли пишут лёгкий смысл…" /> : null}
           </section>

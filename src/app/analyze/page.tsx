@@ -6,7 +6,7 @@ export default function AnalyzePage() {
     <PageShell
       eyebrow="VIDEO INTELLIGENCE"
       title="Сначала полный текст. Потом команда на пост."
-      kicker="Забираем озвучку и тело источника целиком. Переработка — отдельная кнопка: Telegram до 1500 слов, Threads до 500, лёгкий смысл."
+      kicker="По любой публичной ссылке снимаем озвучку или тело поста и сразу собираем Telegram / Threads. Смысл источника не подменяем."
     >
       <AnalyzeForm />
     </PageShell>
