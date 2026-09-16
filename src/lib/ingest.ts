@@ -6,6 +6,7 @@ import { fetchInstagramPost, isInstagramUrl } from "./instagram";
 import type { NicheId, VideoAnalysis } from "./types";
 import { analyzeVideo } from "./video";
 import { wordCount } from "./utils";
+import { apifyVoiceover } from "./apify-voiceover";
 import { assertPublicHttpUrl } from "./operator";
 
 function emptyAnalysis(partial: Partial<VideoAnalysis> & { title: string }): VideoAnalysis {
@@ -116,12 +117,33 @@ function withExtra(result: VideoAnalysis, extra: string): VideoAnalysis {
   };
 }
 
+async function boostVoiceover(result: VideoAnalysis, url: string): Promise<VideoAnalysis> {
+  if (!url || wordCount(result.transcriptText) >= 120) return result;
+  const apify = await apifyVoiceover(url);
+  if (!apify?.text || apify.text.length <= result.transcriptText.length + 20) return result;
+  const transcript = apify.text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => ({ start: index * 2, duration: 2, text: line }));
+  return {
+    ...result,
+    transcriptText: apify.text,
+    transcript: transcript.length ? transcript : result.transcript,
+    method: [...result.method, apify.method],
+    description: result.description || apify.text.slice(0, 280),
+  };
+}
+
 export async function ingestSignal(input: {
   url?: string;
   text?: string;
   niche?: NicheId;
 }): Promise<VideoAnalysis> {
-  return finish(await ingestCore(input));
+  const url = (input.url || "").trim();
+  const core = await ingestCore(input);
+  const boosted = url ? await boostVoiceover(core, url) : core;
+  return finish(boosted);
 }
 
 async function ingestCore(input: {

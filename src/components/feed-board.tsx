@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { FeedArticleRow } from "@/components/feed-article-row";
 import { NICHES } from "@/lib/niches";
 import type { FeedResponse } from "@/lib/types";
-import { relativeTime } from "@/lib/utils";
 
 const REGIONS = ["all", "US", "KR", "JP", "CN", "RU"] as const;
 
@@ -57,7 +56,7 @@ export function FeedBoard({ initial }: { initial: FeedResponse }) {
           <button
             type="button"
             onClick={() => void refresh()}
-            className="rounded-full border border-fuchsia-400/40 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia-200"
+            className="btn-chip btn-chip-primary"
           >
             {refreshing ? "Обновляю…" : "Обновить ленту"}
           </button>
@@ -68,11 +67,7 @@ export function FeedBoard({ initial }: { initial: FeedResponse }) {
               key={item}
               type="button"
               onClick={() => setRegion(item)}
-              className={`rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] ${
-                region === item
-                  ? "border-fuchsia-400 text-fuchsia-100 shadow-[0_0_18px_rgba(232,121,249,0.25)]"
-                  : "border-white/15 text-white/45"
-              }`}
+              className={`btn-chip ${region === item ? "btn-chip-primary" : ""}`}
             >
               {item}
             </button>
@@ -82,7 +77,7 @@ export function FeedBoard({ initial }: { initial: FeedResponse }) {
           <button
             type="button"
             onClick={() => setNiche("all")}
-            className={`rounded-full px-3 py-1 text-xs ${niche === "all" ? "bg-white text-black" : "text-white/50"}`}
+            className={`btn-chip text-xs ${niche === "all" ? "btn-chip-primary" : ""}`}
           >
             все ниши
           </button>
@@ -91,9 +86,7 @@ export function FeedBoard({ initial }: { initial: FeedResponse }) {
               key={item.id}
               type="button"
               onClick={() => setNiche(item.id)}
-              className={`rounded-full px-3 py-1 text-xs ${
-                niche === item.id ? "bg-white text-black" : "text-white/50"
-              }`}
+              className={`btn-chip text-xs ${niche === item.id ? "btn-chip-primary" : ""}`}
             >
               {item.title}
             </button>
@@ -107,45 +100,7 @@ export function FeedBoard({ initial }: { initial: FeedResponse }) {
         />
         <ul className="mt-8 divide-y divide-white/10">
           {articles.map((article) => (
-            <li key={article.id} className="py-6">
-              <div className="flex flex-wrap items-center gap-3 font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">
-                <span className="text-fuchsia-300">{article.region}</span>
-                <span>{article.sourceName}</span>
-                <span>{relativeTime(article.publishedAt)}</span>
-                <span>heat {article.heat}</span>
-                {article.signals.map((signal) => (
-                  <span key={signal} className="text-violet-200">
-                    {signal}
-                  </span>
-                ))}
-              </div>
-              <a
-                href={article.url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 block font-display text-2xl font-light leading-tight text-white hover:text-fuchsia-200"
-              >
-                {article.title}
-              </a>
-              {article.summary ? (
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-white/50">{article.summary}</p>
-              ) : null}
-              <div className="mt-3 flex gap-4 text-[11px] uppercase tracking-[0.16em] text-white/40">
-                <Link href={`/niches/${article.niche}`}>
-                  {NICHES.find((item) => item.id === article.niche)?.title}
-                </Link>
-                <Link
-                  href={`/analyze?url=${encodeURIComponent(article.url)}&title=${encodeURIComponent(article.title)}&summary=${encodeURIComponent(article.summary)}&niche=${article.niche}`}
-                >
-                  забрать текст →
-                </Link>
-                <Link
-                  href={`/studio?title=${encodeURIComponent(article.title)}&summary=${encodeURIComponent(article.summary)}&url=${encodeURIComponent(article.url)}&source=${encodeURIComponent(article.sourceName)}&niche=${article.niche}`}
-                >
-                  в студию →
-                </Link>
-              </div>
-            </li>
+            <FeedArticleRow key={article.id} article={article} />
           ))}
         </ul>
         {!articles.length ? (

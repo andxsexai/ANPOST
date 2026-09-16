@@ -161,3 +161,78 @@ body::after {
   background: #e879f9;
   color: #140818;
 }
+
+.btn-tap {
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(232, 121, 249, 0.35);
+}
+
+.btn-tap:active {
+  opacity: 0.92;
+  transform: scale(0.985);
+}
+
+.btn-chip {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.5rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(232, 121, 249, 0.35);
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.btn-chip:active {
+  transform: scale(0.97);
+}
+
+.btn-chip-primary {
+  border-color: rgba(232, 121, 249, 0.65);
+  background: rgba(232, 121, 249, 0.16);
+  color: #fae8ff;
+  box-shadow: 0 0 20px rgba(232, 121, 249, 0.22);
+}
+
+html[data-motion="lite"] .metal-flow-a,
+html[data-motion="lite"] .metal-flow-b,
+html[data-motion="lite"] .metal-flow-c,
+html[data-motion="lite"] .metal-drop,
+html[data-motion="lite"] .metal-drop-2 {
+  animation: none !important;
+}
+
+html[data-motion="lite"] .liquid-drop-white,
+html[data-motion="lite"] .liquid-drop-violet {
+  animation-duration: 2.4s;
+}
+
+html[data-motion="lite"] .metal-braid {
+  opacity: 0.35;
+}
+
+html[data-motion="lite"] body::before,
+html[data-motion="lite"] body::after {
+  opacity: 0.03;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .metal-flow-a,
+  .metal-flow-b,
+  .metal-flow-c,
+  .metal-drop,
+  .metal-drop-2,
+  .liquid-drop-white,
+  .liquid-drop-violet {
+    animation: none !important;
+  }
+}

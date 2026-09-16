@@ -6,7 +6,7 @@ export default function TelegramPage() {
     <PageShell
       eyebrow="TELEGRAM DESK"
       title="Своя страница. Свой стиль. Один бот."
-      kicker="Подключи канал к @andxshop_bot, перешли пост — получи тот же смысл, только легче читать. Без шаблона «холод и жар»."
+      kicker="Добавь @andxshop_bot админом в канал, задай TELEGRAM_CHANNEL_ID. Команды: /news — список новостей ANPOST, /post 3 — выложить №3 в канал. Пересланный пост — переписка без подмены смысла."
     >
       <TelegramDesk />
     </PageShell>

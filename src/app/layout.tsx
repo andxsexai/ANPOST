@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Manrope, Unbounded } from "next/font/google";
 import { LiquidMetalBackdrop } from "@/components/liquid-metal";
+import { PerformanceMode } from "@/components/performance-mode";
 import { siteUrl } from "@/lib/site-url";
 import "./globals.css";
 
@@ -58,6 +59,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${display.variable} ${sans.variable} ${mono.variable} h-full antialiased`}
     >
       <body className={`${sans.className} relative flex min-h-full flex-col`}>
+        <PerformanceMode />
         <LiquidMetalBackdrop />
         {children}
       </body>

@@ -162,7 +162,7 @@ function AnalyzeFormInner() {
         <button
           type="submit"
           disabled={loading || (!url.trim() && !text.trim())}
-          className="mt-8 rounded-full bg-fuchsia-400 px-6 py-3 font-mono text-[11px] uppercase tracking-[0.22em] text-black shadow-[0_0_30px_rgba(232,121,249,0.45)] disabled:opacity-50"
+          className="btn-chip btn-chip-primary mt-8 px-6 py-3 text-[11px] disabled:opacity-50"
         >
           1. Забрать текст и переписать
         </button>
@@ -205,11 +205,12 @@ function AnalyzeFormInner() {
             <p className="text-sm text-white/40">Озвучка не пришла. Проверь ссылку или вставь текст вручную.</p>
           )}
 
-          {data.platform === "instagram" && wordCount(fullText) < 120 ? (
+          {wordCount(fullText) < 120 ? (
             <p className="rounded-xl border border-amber-400/25 bg-amber-950/20 px-4 py-3 text-sm leading-6 text-amber-100/85">
-              Instagram публично отдаёт подпись, а не речь из ролика. Чтобы снять озвучку автоматически,
-              добавь <span className="font-mono text-xs">OPENAI_API_KEY</span> на сервере (Whisper по mp4, если
-              Meta отдаст файл). Или вставь текст речи в поле выше и нажми «Забрать» снова.
+              Короткий сигнал. Для озвучки с любого видео задай на Vercel{" "}
+              <span className="font-mono text-xs">APIFY_TOKEN</span> (акторы Instagram/YouTube/TikTok) и при
+              необходимости <span className="font-mono text-xs">OPENAI_API_KEY</span> (Whisper). Или вставь
+              текст речи в поле выше.
             </p>
           ) : null}
 

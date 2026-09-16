@@ -41,9 +41,9 @@ export function SiteHeader({ dim }: { dim?: boolean }) {
           Разбор ссылки
         </Link>
       </div>
-      <nav className="flex gap-4 overflow-x-auto border-t border-white/5 px-6 py-3 text-[10px] uppercase tracking-[0.2em] text-white/50 md:hidden">
+      <nav className="flex gap-2 overflow-x-auto border-t border-white/5 px-4 py-3 md:hidden">
         {NAV.map((item) => (
-          <Link key={item.href} href={item.href} className="whitespace-nowrap">
+          <Link key={item.href} href={item.href} className="btn-chip whitespace-nowrap text-[10px]">
             {item.label}
           </Link>
         ))}

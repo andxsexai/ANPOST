@@ -93,6 +93,8 @@ await tg("deleteWebhook", { drop_pending_updates: false });
 await tg("setMyCommands", {
   commands: [
     { command: "start", description: "Как работает переработка" },
+    { command: "news", description: "12 новостей ANPOST" },
+    { command: "post", description: "Выложить новость: /post 3" },
     { command: "style", description: "Напомни стиль канала" },
   ],
 });

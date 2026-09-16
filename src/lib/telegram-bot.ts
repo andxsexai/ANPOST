@@ -7,6 +7,7 @@ import {
   sendMessage,
   type TgUpdate,
 } from "./telegram";
+import { formatNewsList, listNews, publishNewsItem } from "./telegram-news";
 
 const STORE = path.join(process.cwd(), ".data", "telegram-posts.json");
 const OFFSET = path.join(process.cwd(), ".data", "telegram-offset.json");
@@ -55,8 +56,30 @@ export async function handleUpdate(update: TgUpdate) {
   if (text.startsWith("/start") || text.startsWith("/help")) {
     await sendMessage(
       message.chat.id,
-      "Кинь любой текст или перешли пост. Верну тот же смысл, только легче читать. Без чужих шаблонов.",
+      "Команды:\n/news — 12 свежих новостей ANPOST\n/post 3 — выложить №3 в канал (бот должен быть админом)\n\nИли пришли текст/ссылку — перепишу без подмены смысла.",
     );
+    return null;
+  }
+  if (text.startsWith("/news")) {
+    const articles = await listNews(12);
+    await sendMessage(message.chat.id, formatNewsList(articles));
+    return null;
+  }
+  const postMatch = text.match(/^\/post(?:@\w+)?\s+(\d{1,2})\s*$/i);
+  if (postMatch) {
+    try {
+      const index = Number(postMatch[1]);
+      const published = await publishNewsItem(index, message.chat.id);
+      await sendMessage(
+        message.chat.id,
+        `Опубликовано №${index}: ${published.article.title.slice(0, 120)} → ${published.target}`,
+      );
+    } catch (error) {
+      await sendMessage(
+        message.chat.id,
+        error instanceof Error ? error.message : "Не удалось опубликовать",
+      );
+    }
     return null;
   }
   const rewritten = rewriteTelegram(text);
