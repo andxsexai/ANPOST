@@ -1,5 +1,8 @@
 # ANPOST
 
+**Код:** [github.com/andxsexai/ANPOST](https://github.com/andxsexai/ANPOST)  
+**Открыть на телефоне:** один раз [Deploy on Vercel](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fandxsexai%2FANPOST&project-name=anpost&repository-name=ANPOST) → ссылка `*.vercel.app` → «На экран Домой». Подробно: [DEPLOY.md](./DEPLOY.md).
+
 Автоматизированный OSINT-контур для постинга: **10 открытых новостных лент**, **6 человеческих ниш**, разбор ролика по публичной ссылке и посадка текста на Instagram / Threads / TikTok / VK.
 
 > Открытые источники. Понимание изнутри. Сервис без границ — в пределах публичного контура.

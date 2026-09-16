@@ -1,10 +1,10 @@
 import { decodeEntities } from "./utils";
 
 const SHARE_UA = [
-  "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
-  "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
   "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
   "Twitterbot/1.0",
+  "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+  "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
 ];
 
@@ -40,17 +40,40 @@ function meta(html: string, names: string[]) {
       new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:name|property)=["']${name}["']`, "i"),
     );
     const raw = a?.[1] || b?.[1];
-    if (raw) return keepNewlines(raw);
+    if (raw) return keepNewlines(decodeEntities(raw));
   }
   return "";
 }
 
 function peelShareCard(text: string) {
-  return text
-    .replace(/^\d[\d\s,.]*\s*(likes?|views?|comments?)[^.]*?:\s*/i, "")
+  const decoded = decodeEntities(text);
+  const quoted =
+    decoded.match(/:\s*"([^"]{8,})"/)?.[1] ||
+    decoded.match(/:\s*«([^»]{8,})»/)?.[1] ||
+    decoded.match(/:\s*'([^']{8,})'/)?.[1];
+  const core = quoted || decoded;
+  return core
+    .replace(/^\d[\d\s,.]*\s*(likes?|views?|comments?)[^.]*?(?:-\s*[\w._]+\s+on\s+[^:"]+)?[:\s]*/i, "")
     .replace(/^"+|"+$/g, "")
     .replace(/^«|»$/g, "")
     .trim();
+}
+
+function captionFromJson(html: string) {
+  const blocks = [
+    ...html.matchAll(/"text"\s*:\s*"((?:\\.|[^"\\])*)"/g),
+  ].map((match) => {
+    try {
+      return JSON.parse(`"${match[1]}"`) as string;
+    } catch {
+      return match[1].replace(/\\n/g, "\n");
+    }
+  });
+  const ranked = blocks
+    .map((text) => peelShareCard(text.trim()))
+    .filter((text) => text.length > 20 && !isBlockedCaption(text))
+    .sort((a, b) => b.length - a.length);
+  return ranked[0] || "";
 }
 
 function captionFromBody(html: string) {
@@ -64,7 +87,7 @@ function captionFromBody(html: string) {
 }
 
 function isBlockedCaption(text: string) {
-  return /зарегистрируйтесь|sign up to see|log in to instagram|создайте аккаунт|чтобы быть в курсе|see photos and videos/i.test(
+  return /зарегистрируйтесь|sign up to see|log in to instagram|создайте аккаунт|чтобы быть в курсе|see photos and videos|meta ai|используя meta ai|using meta ai|улучшения ии/i.test(
     text,
   );
 }
@@ -96,10 +119,15 @@ export async function fetchInstagramPost(url: string) {
           continue;
         }
         const html = await response.text();
+        const fromMeta = meta(html, ["og:description", "description", "twitter:description"]);
+        const fromJson = captionFromJson(html);
         const caption = peelShareCard(
-          captionFromBody(html) || meta(html, ["og:description", "description", "twitter:description"]),
+          captionFromBody(html) ||
+            (!isBlockedCaption(fromMeta) ? fromMeta : "") ||
+            fromJson,
         );
-        if (caption.length < 40 || isBlockedCaption(caption)) {
+        const minLen = isBlockedCaption(caption) ? 9999 : 12;
+        if (caption.length < minLen || isBlockedCaption(caption)) {
           lastError = "Instagram показал экран входа вместо подписи";
           continue;
         }

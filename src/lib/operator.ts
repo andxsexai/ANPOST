@@ -25,6 +25,21 @@ export function authorizeOperator(request: Request) {
   return { ok: true as const };
 }
 
+export function authorizeCron(request: Request) {
+  const secret = process.env.CRON_SECRET || operatorSecret();
+  if (!secret) {
+    if (isPublicDeploy()) {
+      return { ok: false as const, status: 401, error: "Задай CRON_SECRET на сервере" };
+    }
+    return { ok: true as const };
+  }
+  const header = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
+  if (header !== secret) {
+    return { ok: false as const, status: 401, error: "Неверный cron secret" };
+  }
+  return { ok: true as const };
+}
+
 export function assertPublicHttpUrl(value: string) {
   let parsed: URL;
   try {

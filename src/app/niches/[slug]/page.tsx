@@ -3,11 +3,10 @@ import { FeedBoard } from "@/components/feed-board";
 import { PageShell } from "@/components/site-chrome";
 import { RELATION_FORUMS } from "@/lib/forums";
 import { NICHE_BY_ID } from "@/lib/niches";
-import { loadFeed } from "@/lib/rss";
+import { getCachedFeed } from "@/lib/feed-cache";
 import type { NicheId } from "@/lib/types";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 180;
+export const revalidate = 900;
 
 export default async function NichePage({
   params,
@@ -17,7 +16,7 @@ export default async function NichePage({
   const { slug } = await params;
   const niche = NICHE_BY_ID[slug as NicheId];
   if (!niche) notFound();
-  const feed = await loadFeed(niche.id);
+  const feed = await getCachedFeed(niche.id);
 
   return (
     <PageShell

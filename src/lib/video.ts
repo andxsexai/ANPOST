@@ -1,4 +1,5 @@
 import { analogize, buildOriginalScript, buildScenes, summarizeAbout } from "./copywriter";
+import { fetchTikTokPublic, isTikTokHomeOrFeed } from "./tiktok";
 import { packCopy, toVoiceover } from "./style";
 import type { NicheId, TranscriptCue, VideoAnalysis, VideoPlatform } from "./types";
 import { stripHtml } from "./utils";
@@ -433,6 +434,72 @@ export async function analyzeVideo(url: string, niche: NicheId = "news"): Promis
   let author = "";
   let thumbnail: string | null = null;
   let description = "";
+
+  if (platform === "tiktok" && isTikTokHomeOrFeed(url)) {
+    throw new Error(
+      "Это главная TikTok, а не ролик. Вставь ссылку вида tiktok.com/@автор/video/123…",
+    );
+  }
+
+  if (platform === "tiktok") {
+    try {
+      const tiktok = await fetchTikTokPublic(url);
+      title = tiktok.title;
+      author = tiktok.author;
+      thumbnail = tiktok.thumbnail;
+      description = tiktok.description;
+      method.push(...tiktok.method);
+      const cues: TranscriptCue[] = tiktok.transcriptText
+        ? tiktok.transcriptText
+            .split(/(?<=[.!?…])\s+/)
+            .map((line, index) => ({ start: index * 2, duration: 2, text: line.trim() }))
+            .filter((cue) => cue.text)
+        : [];
+      const transcriptText = tiktok.transcriptText;
+      const about = summarizeAbout(title, description, transcriptText);
+      const scenes = buildScenes(cues);
+      const originalScript = buildOriginalScript(title, about, transcriptText, scenes);
+      const analogous = analogize({
+        title,
+        about,
+        transcript: transcriptText,
+        niche,
+        scenes,
+      });
+      const voiceover = toVoiceover({ title, description, transcript: transcriptText });
+      return {
+        url,
+        platform,
+        title,
+        author,
+        thumbnail,
+        description,
+        about,
+        transcript: cues.length ? cues : [{ start: 0, duration: 0, text: transcriptText }],
+        transcriptText,
+        scenes,
+        originalScript,
+        analogous,
+        painPoints: painFromText(transcriptText),
+        method,
+        confidence: transcriptText.length > 120 ? 0.72 : 0.58,
+        voiceover,
+        rewritten: "",
+        telegramPost: "",
+        threadsPost: "",
+        telegramWords: 0,
+        threadsWords: 0,
+        packed: packCopy({
+          title,
+          description: description || about,
+          voiceover,
+          rewritten: "",
+        }),
+      };
+    } catch (error) {
+      method.push(error instanceof Error ? error.message : "tiktok fetch failed");
+    }
+  }
 
   try {
     const meta = await oembedMeta(platform, url);

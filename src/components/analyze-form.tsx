@@ -99,7 +99,7 @@ function AnalyzeFormInner() {
         <input
           value={url}
           onChange={(event) => setUrl(event.target.value)}
-          placeholder="Вставь ссылку источника"
+          placeholder="YouTube / Instagram reel / TikTok …/video/123 — не главную tiktok.com"
           className="mt-3 w-full border-b border-white/20 bg-transparent py-4 font-display text-2xl font-light text-white outline-none placeholder:text-white/20"
         />
         <label className="mt-8 block font-mono text-[10px] uppercase tracking-[0.28em] text-fuchsia-300">

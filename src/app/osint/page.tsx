@@ -1,14 +1,13 @@
 import Link from "next/link";
 import { PageShell } from "@/components/site-chrome";
 import { buildOsintBrief } from "@/lib/osint";
-import { loadFeed } from "@/lib/rss";
+import { getCachedFeed } from "@/lib/feed-cache";
 import { SOURCES } from "@/lib/sources";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 180;
+export const revalidate = 900;
 
 export default async function OsintPage() {
-  const feed = await loadFeed();
+  const feed = await getCachedFeed();
   const brief = buildOsintBrief(feed);
 
   return (

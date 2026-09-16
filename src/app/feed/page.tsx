@@ -1,12 +1,11 @@
 import { FeedBoard } from "@/components/feed-board";
 import { PageShell } from "@/components/site-chrome";
-import { loadFeed } from "@/lib/rss";
+import { getCachedFeed } from "@/lib/feed-cache";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 180;
+export const revalidate = 900;
 
 export default async function FeedPage() {
-  const feed = await loadFeed();
+  const feed = await getCachedFeed();
   const live = feed.sources.filter((source) => source.ok).length;
 
   return (

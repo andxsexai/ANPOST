@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { InstallOnPhone } from "@/components/install-on-phone";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
+import { siteUrl } from "@/lib/site-url";
 import { NICHES } from "@/lib/niches";
 import { SOURCES } from "@/lib/sources";
 
@@ -10,11 +12,42 @@ const STEPS = [
   { n: "04", title: "Посадка", text: "Три нативных текста. Без мифа про кросс-постинг." },
 ];
 
+const GITHUB = "https://github.com/andxsexai/ANPOST";
+const VERCEL_DEPLOY =
+  "https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fandxsexai%2FANPOST&project-name=anpost&repository-name=ANPOST";
+
 export default function Home() {
+  const live = siteUrl();
+  const onVercel = live.includes("vercel.app");
+
   return (
     <div className="flex min-h-full flex-col">
       <SiteHeader />
+      <InstallOnPhone />
       <main className="relative z-10">
+        {!onVercel ? (
+          <section className="mx-auto max-w-7xl px-6 pb-4">
+            <div className="rounded-2xl border border-amber-400/25 bg-amber-950/20 px-5 py-4 text-sm leading-7 text-white/75">
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-amber-200/90">
+                GitHub ≠ сайт в браузере
+              </p>
+              <p className="mt-2">
+                Код лежит на{" "}
+                <a href={GITHUB} className="text-fuchsia-300 underline-offset-2 hover:underline">
+                  github.com/andxsexai/ANPOST
+                </a>
+                . Чтобы открыть ANPOST на телефоне как приложение, один раз подключи деплой на Vercel
+                (бесплатно) — получишь ссылку вида <span className="text-white/90">anpost.vercel.app</span>.
+              </p>
+              <a
+                href={VERCEL_DEPLOY}
+                className="mt-4 inline-block rounded-full bg-white px-5 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-black"
+              >
+                Deploy on Vercel → открыть на телефоне
+              </a>
+            </div>
+          </section>
+        ) : null}
         <section className="mx-auto grid max-w-7xl gap-16 px-6 pb-8 pt-16 lg:grid-cols-[1.15fr_0.85fr] lg:pt-24">
           <div>
             <p className="font-mono text-[10px] tracking-[0.42em] text-fuchsia-300/90">
