@@ -1,3 +1,5 @@
+import { fetchInstagramGraphql } from "./instagram-graphql";
+import { transcribeMediaUrl, whisperEnabled } from "./transcribe-audio";
 import { decodeEntities } from "./utils";
 
 const SHARE_UA = [
@@ -86,13 +88,49 @@ function captionFromBody(html: string) {
   return peelShareCard(text);
 }
 
+function parseJsonString(raw: string) {
+  try {
+    return JSON.parse(`"${raw}"`) as string;
+  } catch {
+    return raw.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\u0026/g, "&");
+  }
+}
+
+function videoUrlsFromHtml(html: string) {
+  const urls = new Set<string>();
+  for (const match of html.matchAll(/"video_url"\s*:\s*"((?:\\.|[^"\\])*)"/g)) {
+    const url = parseJsonString(match[1]);
+    if (url.includes(".mp4")) urls.add(url);
+  }
+  for (const match of html.matchAll(/https:\\\/\\\/[^"\\]+\.mp4[^"\\]*/g)) {
+    urls.add(parseJsonString(match[0]));
+  }
+  return [...urls].sort((a, b) => b.length - a.length);
+}
+
+function captionFromOgDescription(raw: string) {
+  const decoded = decodeEntities(raw);
+  const quoted = decoded.match(/:\s*"([\s\S]*?)"\s*\.?\s*$/i)?.[1];
+  if (quoted) return peelShareCard(quoted);
+  return peelShareCard(decoded);
+}
+
 function isBlockedCaption(text: string) {
   return /зарегистрируйтесь|sign up to see|log in to instagram|создайте аккаунт|чтобы быть в курсе|see photos and videos|meta ai|используя meta ai|using meta ai|улучшения ии/i.test(
     text,
   );
 }
 
-export async function fetchInstagramPost(url: string) {
+export type InstagramPost = {
+  author: string;
+  title: string;
+  caption: string;
+  voiceover: string;
+  thumbnail: string | null;
+  method: string[];
+};
+
+export async function fetchInstagramPost(url: string): Promise<InstagramPost> {
   const code = url.match(/instagram\.com\/(?:p|reel|reels|tv)\/([^/?#]+)/i)?.[1];
   if (!code) throw new Error("Нужна ссылка вида instagram.com/p/…");
   const candidates = [
@@ -121,16 +159,48 @@ export async function fetchInstagramPost(url: string) {
         const html = await response.text();
         const fromMeta = meta(html, ["og:description", "description", "twitter:description"]);
         const fromJson = captionFromJson(html);
+        const method: string[] = ["instagram public card"];
         const caption = peelShareCard(
           captionFromBody(html) ||
-            (!isBlockedCaption(fromMeta) ? fromMeta : "") ||
+            (!isBlockedCaption(fromMeta) ? captionFromOgDescription(fromMeta) : "") ||
             fromJson,
         );
-        const minLen = isBlockedCaption(caption) ? 9999 : 12;
+        const minLen = isBlockedCaption(caption) ? 9999 : 8;
         if (caption.length < minLen || isBlockedCaption(caption)) {
           lastError = "Instagram показал экран входа вместо подписи";
           continue;
         }
+        method.push("instagram caption");
+
+        let voiceover = caption;
+        let fullCaption = caption;
+        const gql = await fetchInstagramGraphql(code);
+        if (gql) {
+          method.push(gql.method);
+          if (gql.caption.length > fullCaption.length) {
+            fullCaption = gql.caption;
+            if (voiceover.length < gql.caption.length) voiceover = gql.caption;
+          }
+        }
+
+        const videos = [
+          ...(gql?.videoUrl ? [gql.videoUrl] : []),
+          ...videoUrlsFromHtml(html),
+        ];
+        if (videos[0] && whisperEnabled()) {
+          const spoken = await transcribeMediaUrl(videos[0]);
+          if (spoken) {
+            voiceover = spoken;
+            method.push("whisper from public mp4");
+          } else {
+            method.push("whisper skipped (download or API)");
+          }
+        } else if (videos[0] && !whisperEnabled()) {
+          method.push("public mp4 found — задай OPENAI_API_KEY для озвучки");
+        } else {
+          method.push("public mp4 not in card");
+        }
+
         const author =
           html.match(/instagram\.com\/([A-Za-z0-9._]+)\/reel\//i)?.[1] ||
           html.match(/\(@([A-Za-z0-9._]+)\)/)?.[1] ||
@@ -145,7 +215,7 @@ export async function fetchInstagramPost(url: string) {
           html.match(/property="og:image" content="([^"]+)"/i)?.[1] ||
           html.match(/content="(https:\/\/scontent[^"]+)"/i)?.[1] ||
           null;
-        return { author, title, caption, thumbnail };
+        return { author, title, caption: fullCaption, voiceover, thumbnail, method };
       } catch (error) {
         lastError = error instanceof Error ? error.message : lastError;
       }

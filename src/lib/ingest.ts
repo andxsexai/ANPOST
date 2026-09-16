@@ -92,8 +92,12 @@ function finish(result: VideoAnalysis): VideoAnalysis {
 
 function withExtra(result: VideoAnalysis, extra: string): VideoAnalysis {
   if (!extra.trim()) return result;
-  if (result.transcriptText.includes(extra.trim())) return result;
-  const transcriptText = [result.transcriptText, extra.trim()].filter(Boolean).join("\n\n");
+  const trimmed = extra.trim();
+  if (result.transcriptText.includes(trimmed)) return result;
+  const transcriptText =
+    trimmed.length > result.transcriptText.length + 40
+      ? trimmed
+      : [result.transcriptText, trimmed].filter(Boolean).join("\n\n");
   const voiceover = toVoiceover({
     title: result.title,
     description: result.description,
@@ -140,14 +144,14 @@ async function ingestCore(input: {
           title: post.title,
           author: post.author,
           description: post.caption,
-          transcriptText: post.caption,
-          transcript: post.caption
+          transcriptText: post.voiceover,
+          transcript: post.voiceover
             .split(/\n+/)
             .map((line) => line.trim())
             .filter(Boolean)
             .map((line, index) => ({ start: index * 2, duration: 2, text: line })),
           thumbnail: post.thumbnail,
-          method: ["instagram embed caption"],
+          method: post.method,
           analogous: {
             niche,
             hook: "",

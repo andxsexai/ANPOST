@@ -1,8 +1,5 @@
 {
   "framework": "nextjs",
   "regions": ["iad1"],
-  "crons": [
-    { "path": "/api/cron/feed", "schedule": "0 * * * *" },
-    { "path": "/api/cron/feed", "schedule": "15 5 * * *" }
-  ]
+  "crons": [{ "path": "/api/cron/feed", "schedule": "15 5 * * *" }]
 }

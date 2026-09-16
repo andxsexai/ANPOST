@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CopyButton } from "@/components/copy-button";
 import { LiquidLoader } from "@/components/liquid-metal";
@@ -26,6 +26,8 @@ function AnalyzeFormInner() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<VideoAnalysis | null>(null);
 
+  const autoRan = useRef(false);
+
   useEffect(() => {
     const nextUrl = params.get("url") || "";
     const nextTitle = params.get("title") || "";
@@ -36,6 +38,35 @@ function AnalyzeFormInner() {
       setText([nextTitle, nextSummary].filter(Boolean).join("\n\n"));
     }
     if (nextNiche) setNiche(nextNiche);
+  }, [params]);
+
+  useEffect(() => {
+    const nextUrl = params.get("url")?.trim();
+    if (!nextUrl || autoRan.current || params.get("autorun") === "0") return;
+    autoRan.current = true;
+    void (async () => {
+      setLoading(true);
+      setError(null);
+      setData(null);
+      try {
+        const response = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: nextUrl,
+            text: params.get("text") || "",
+            niche: (params.get("niche") as NicheId) || "news",
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Не удалось забрать текст");
+        setData(payload as VideoAnalysis);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "ошибка");
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [params]);
 
   async function extract(event?: React.FormEvent) {
@@ -173,6 +204,14 @@ function AnalyzeFormInner() {
           ) : (
             <p className="text-sm text-white/40">Озвучка не пришла. Проверь ссылку или вставь текст вручную.</p>
           )}
+
+          {data.platform === "instagram" && wordCount(fullText) < 120 ? (
+            <p className="rounded-xl border border-amber-400/25 bg-amber-950/20 px-4 py-3 text-sm leading-6 text-amber-100/85">
+              Instagram публично отдаёт подпись, а не речь из ролика. Чтобы снять озвучку автоматически,
+              добавь <span className="font-mono text-xs">OPENAI_API_KEY</span> на сервере (Whisper по mp4, если
+              Meta отдаст файл). Или вставь текст речи в поле выше и нажми «Забрать» снова.
+            </p>
+          ) : null}
 
           <section className="border border-fuchsia-400/30 bg-fuchsia-500/5 p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
