@@ -2,12 +2,11 @@ import { analogize, buildOriginalScript, buildScenes, summarizeAbout } from "./c
 import { composePlatforms, packCopy, toVoiceover } from "./style";
 import { extractArticle } from "./article";
 import { fetchPublicTelegram, isTelegramUrl } from "./telegram";
-import { fetchInstagramPost, isInstagramUrl } from "./instagram";
 import type { NicheId, VideoAnalysis } from "./types";
-import { analyzeVideo } from "./video";
 import { wordCount } from "./utils";
-import { apifyVoiceover } from "./apify-voiceover";
 import { assertPublicHttpUrl } from "./operator";
+import { analysisFromGateway } from "./ingest-from-gateway";
+import { voiceoverGateway } from "./voiceover-gateway";
 
 function emptyAnalysis(partial: Partial<VideoAnalysis> & { title: string }): VideoAnalysis {
   const description = partial.description || "";
@@ -117,33 +116,12 @@ function withExtra(result: VideoAnalysis, extra: string): VideoAnalysis {
   };
 }
 
-async function boostVoiceover(result: VideoAnalysis, url: string): Promise<VideoAnalysis> {
-  if (!url || wordCount(result.transcriptText) >= 120) return result;
-  const apify = await apifyVoiceover(url);
-  if (!apify?.text || apify.text.length <= result.transcriptText.length + 20) return result;
-  const transcript = apify.text
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, index) => ({ start: index * 2, duration: 2, text: line }));
-  return {
-    ...result,
-    transcriptText: apify.text,
-    transcript: transcript.length ? transcript : result.transcript,
-    method: [...result.method, apify.method],
-    description: result.description || apify.text.slice(0, 280),
-  };
-}
-
 export async function ingestSignal(input: {
   url?: string;
   text?: string;
   niche?: NicheId;
 }): Promise<VideoAnalysis> {
-  const url = (input.url || "").trim();
-  const core = await ingestCore(input);
-  const boosted = url ? await boostVoiceover(core, url) : core;
-  return finish(boosted);
+  return finish(await ingestCore(input));
 }
 
 async function ingestCore(input: {
@@ -155,55 +133,6 @@ async function ingestCore(input: {
   const url = (input.url || "").trim();
   const text = (input.text || "").trim();
   if (url) assertPublicHttpUrl(url);
-
-  if (url && isInstagramUrl(url)) {
-    try {
-      const post = await fetchInstagramPost(url);
-      return withExtra(
-        emptyAnalysis({
-          url,
-          platform: "instagram",
-          title: post.title,
-          author: post.author,
-          description: post.caption,
-          transcriptText: post.voiceover,
-          transcript: post.voiceover
-            .split(/\n+/)
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .map((line, index) => ({ start: index * 2, duration: 2, text: line })),
-          thumbnail: post.thumbnail,
-          method: post.method,
-          analogous: {
-            niche,
-            hook: "",
-            scenes: [],
-            voiceover: "",
-            captions: { instagram: "", threads: "", tiktok: "", vk: "" },
-          },
-        }),
-        text,
-      );
-    } catch (error) {
-      return emptyAnalysis({
-        url,
-        platform: "instagram",
-        title: "Пост Instagram",
-        description:
-          error instanceof Error
-            ? error.message
-            : "Подпись не снялась. Вставь текст поста в поле ниже.",
-        method: ["instagram fallback"],
-        analogous: {
-          niche,
-          hook: "",
-          scenes: [],
-          voiceover: "",
-          captions: { instagram: "", threads: "", tiktok: "", vk: "" },
-        },
-      });
-    }
-  }
 
   if (url && isTelegramUrl(url)) {
     try {
@@ -248,75 +177,23 @@ async function ingestCore(input: {
 
   if (url) {
     try {
-      const analysis = await analyzeVideo(url, niche);
-      const voiceover = toVoiceover({
-        title: analysis.title,
-        description: analysis.description,
-        transcript: analysis.transcriptText,
-      });
-      let transcriptText = analysis.transcriptText;
-      if (
-        wordCount(transcriptText || analysis.description) < 120 &&
-        !["youtube", "tiktok", "instagram", "telegram", "vk"].includes(analysis.platform)
-      ) {
-        try {
-          const article = await extractArticle(url);
-          transcriptText = article.body;
-          return withExtra(
-            emptyAnalysis({
-            ...analysis,
-            title: analysis.title || article.title,
-            description: analysis.description || article.description,
-            thumbnail: analysis.thumbnail || article.thumbnail,
-            transcriptText,
-            method: [...analysis.method, "article body"],
-            analogous: {
-              niche,
-              hook: "",
-              scenes: [],
-              voiceover: "",
-              captions: { instagram: "", threads: "", tiktok: "", vk: "" },
-            },
-          }),
-            text,
-          );
-        } catch {
-          // keep video/oembed result
-        }
+      const hit = await voiceoverGateway(url, niche);
+      if (hit && wordCount(hit.text) >= 8) {
+        return withExtra(analysisFromGateway(url, hit, niche), text);
       }
+    } catch {
+      // fall through to article
+    }
+    try {
+      const article = await extractArticle(url);
       return withExtra(
-        {
-        ...analysis,
-        voiceover: toVoiceover({
-          title: analysis.title,
-          description: analysis.description,
-          transcript: transcriptText || voiceover,
-        }),
-        transcriptText: transcriptText || analysis.transcriptText,
-        rewritten: "",
-        telegramPost: "",
-        threadsPost: "",
-        telegramWords: 0,
-        threadsWords: 0,
-        packed: packCopy({
-          title: analysis.title,
-          description: analysis.description || analysis.about,
-          voiceover: transcriptText || voiceover,
-          rewritten: "",
-        }),
-      },
-        text,
-      );
-    } catch (error) {
-      try {
-        const article = await extractArticle(url);
-        return emptyAnalysis({
+        emptyAnalysis({
           url,
           title: article.title,
           description: article.description,
           transcriptText: article.body,
           thumbnail: article.thumbnail,
-          method: ["article extract"],
+          method: ["gateway miss", "article extract"],
           analogous: {
             niche,
             hook: "",
@@ -324,22 +201,23 @@ async function ingestCore(input: {
             voiceover: "",
             captions: { instagram: "", threads: "", tiktok: "", vk: "" },
           },
-        });
-      } catch {
-        return emptyAnalysis({
-          url,
-          title: url,
-          description: error instanceof Error ? error.message : "не удалось снять метаданные",
-          method: ["fallback after fetch error"],
-          analogous: {
-            niche,
-            hook: "",
-            scenes: [],
-            voiceover: "",
-            captions: { instagram: "", threads: "", tiktok: "", vk: "" },
-          },
-        });
-      }
+        }),
+        text,
+      );
+    } catch (error) {
+      return emptyAnalysis({
+        url,
+        title: url,
+        description: error instanceof Error ? error.message : "Шлюз не снял озвучку. Вставь текст вручную.",
+        method: ["voice gateway empty"],
+        analogous: {
+          niche,
+          hook: "",
+          scenes: [],
+          voiceover: "",
+          captions: { instagram: "", threads: "", tiktok: "", vk: "" },
+        },
+      });
     }
   }
 

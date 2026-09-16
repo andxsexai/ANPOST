@@ -207,10 +207,9 @@ function AnalyzeFormInner() {
 
           {wordCount(fullText) < 120 ? (
             <p className="rounded-xl border border-amber-400/25 bg-amber-950/20 px-4 py-3 text-sm leading-6 text-amber-100/85">
-              Короткий сигнал. Для озвучки с любого видео задай на Vercel{" "}
-              <span className="font-mono text-xs">APIFY_TOKEN</span> (акторы Instagram/YouTube/TikTok) и при
-              необходимости <span className="font-mono text-xs">OPENAI_API_KEY</span> (Whisper). Или вставь
-              текст речи в поле выше.
+              Шлюз ANPOST (<span className="font-mono text-xs">/api/gateway/voice</span>) уже пробует все
+              публичные дорожки параллельно — без Apify. Если речь не пришла, вставь текст озвучки выше или
+              укажи свой <span className="font-mono text-xs">ANPOST_VOICE_GATEWAY_URL</span> (yt-dlp sidecar).
             </p>
           ) : null}
 
